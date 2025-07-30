@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import supabase from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 import './Stations.css';
 
 const excelDateToJS = (excelSerial) => {
@@ -89,6 +89,7 @@ const Stations = () => {
           location: normalizedRow.location || '',
           time: normalizedRow.time || '',
           hours: normalizedRow.hours || '',
+          role: normalizedRow.role || '', 
         };
       });
 
@@ -137,6 +138,7 @@ const Stations = () => {
         location: selectedStation.location,
         time: selectedStation.time,
         hours: selectedStation.hours,
+        role: selectedStation.role,
       })
       .eq('id', selectedStation.id);
 
@@ -201,6 +203,7 @@ const Stations = () => {
             <th>Location</th>
             <th>Time</th>
             <th>Hours</th>
+            <th>Role</th>
           </tr>
         </thead>
         <tbody>
@@ -215,6 +218,7 @@ const Stations = () => {
               <td>{station.location}</td>
               <td>{station.time}</td>
               <td>{station.hours}</td>
+              <td>{station.role}</td>
             </tr>
           ))}
         </tbody>
@@ -262,6 +266,14 @@ const Stations = () => {
                 type="text"
                 value={selectedStation.hours}
                 onChange={(e) => handleModalInputChange('hours', e.target.value)}
+              />
+            </label>
+            <label>
+              Role:
+              <input
+                type="text"
+                value={selectedStation.role}
+                onChange={(e) => handleModalInputChange('role', e.target.value)}
               />
             </label>
             <div>

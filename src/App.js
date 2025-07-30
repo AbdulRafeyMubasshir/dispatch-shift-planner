@@ -8,7 +8,7 @@ import Login from './components/Login';
 import RegisterOrganization from './components/RegisterOrganization';
 import RegisterUser from './components/RegisterUser';
 import ProtectedRoute from './components/ProtectedRoute'; // ProtectedRoute component to protect routes
-import supabase from './supabaseClient'; // Supabase client
+import { supabase } from './supabaseClient'; // Supabase client
 
 import Navigation from './components/Navigation'; // Import the Navigation component
 

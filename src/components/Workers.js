@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Workers.css';
-import supabase from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 const Workers = () => {
   const [workers, setWorkers] = useState([]);
@@ -105,6 +105,7 @@ const Workers = () => {
           friday: updatedWorker.friday,
           saturday: updatedWorker.saturday,
           sunday: updatedWorker.sunday,
+          role: updatedWorker.role,
         })
         .eq('id', updatedWorker.id)
         .select();
@@ -211,6 +212,7 @@ const Workers = () => {
             <th>Friday</th>
             <th>Saturday</th>
             <th>Can Work Stations</th>
+            <th>Role</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -230,6 +232,7 @@ const Workers = () => {
               <td>{worker.friday}</td>
               <td>{worker.saturday}</td>
               <td>{worker.canworkstations?.join(', ')}</td>
+              <td>{worker.role}</td>
               <td>
                 <button
                   onClick={(e) => {
@@ -301,7 +304,14 @@ const Workers = () => {
     onChange={(e) => handleModalInputChange('canworkstations', e.target.value)}  // Directly handle string input
   />
 </label>
-
+<label>
+        Role:
+        <input
+          type="text"
+          value={selectedWorker.role || ''}
+          onChange={(e) => handleModalInputChange('role', e.target.value)}
+        />
+      </label>
 
             <div className="modal-buttons">
               <button onClick={handleSaveModal} className="bg-blue-500 text-white px-4 py-2 rounded">Save</button>

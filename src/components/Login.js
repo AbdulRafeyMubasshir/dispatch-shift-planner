@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; // Importing useNavigate hook for redirection
-import supabase from '../supabaseClient'; // Import Supabase client
+import { supabase } from '../supabaseClient'; // Import Supabase client
 import './Login.css'; // Importing the CSS file
 
 const Login = () => {

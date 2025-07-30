@@ -1,9 +1,19 @@
-import supabase from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 const getShiftType = (time) => {
-  const startTime = parseInt(time.split('-')[0]);
-  if (startTime < 1200) return 'early';
-  return 'late';
+  const [start, end] = time.split('-').map(t => parseInt(t));
+
+  // Convert times to minutes for flexibility
+  const startMin = Math.floor(start / 100) * 60 + (start % 100);
+  const endMin = Math.floor(end / 100) * 60 + (end % 100);
+
+  // Handle cross-midnight
+  const isOvernight = endMin <= startMin;
+
+  if (isOvernight) return 'night';
+  if (start >= 400 && start < 1200) return 'early';
+  if (start >= 1200 && start < 2300) return 'late';
+  return 'night';
 };
 
 const getShiftDurationInHours = (time) => {
@@ -74,6 +84,7 @@ const allocateWorkers = async () => {
   const workers = workersData.map(worker => ({
     ...worker,
     canworkstations: worker.canworkstations || [],
+    role: worker.role || '',
     availabilityByDay: {
       monday: worker.monday?.toLowerCase() || null,
       tuesday: worker.tuesday?.toLowerCase() || null,
@@ -116,8 +127,9 @@ const allocateWorkers = async () => {
 
       const currentHours = workerTotalHours[worker.id] || 0;
       const exceedsLimit = currentHours + shiftDurationHours > 72;
+      const hasMatchingRole = worker.role.toLowerCase() === station.role.toLowerCase();
 
-      return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit;
+      return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole;
     });
 
     // 🔽 Sort by total hours worked so far

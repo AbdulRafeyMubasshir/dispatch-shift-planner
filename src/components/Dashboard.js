@@ -4,7 +4,7 @@ import allocateWorkers from '../services/scheduler';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import './Dashboard.css';
-import supabase from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 
 const Dashboard = () => {
   const [schedule, setSchedule] = useState({});
@@ -71,6 +71,7 @@ const Dashboard = () => {
           location: station.location,
           time: station.time,
           date: station.date,
+          role: station.role,
         };
       }
     });
@@ -82,6 +83,7 @@ const Dashboard = () => {
           formattedSchedule[worker][day] = {
             location: 'Unassigned',
             time: '',
+            role: worker.role,
           };
         }
       });
@@ -126,7 +128,7 @@ if (stationsError) {
 }
 
 // Step 3: Map the unique dates to the corresponding days of the week
-const uniqueDates = [...new Set(stations.map(row => row.date))];
+const uniqueDates = [...new Set(stations.map(row => row.date))].sort((a, b) => new Date(a) - new Date(b));;
 const newDatesOfWeek = {};
 daysOfWeek.forEach((day, index) => {
   const date = uniqueDates[index];
@@ -149,6 +151,7 @@ setDatesOfWeek(newDatesOfWeek);
             location: 'Unassigned',
             time: '',
             date: newDatesOfWeek[day] || '',
+            role: worker.role,
           };
         });
       }
@@ -606,8 +609,10 @@ const oldTime = oldAssignment.time || null;
   // New function to generate a new schedule on button click
   const generateNewSchedule = async () => {
     const allocatedSchedule = await allocateWorkers();
+    console.log(allocatedSchedule);
     const formattedSchedule = await formatSchedule(allocatedSchedule);
     setSchedule(formattedSchedule); // Set new schedule
+    console.log(schedule);
     assignStationColors(formattedSchedule); // Assign new station colors
     setIsNewScheduleGenerated(true); // Track that a new schedule has been generated
 
@@ -653,6 +658,7 @@ setUnassignedStations(unassigned);
           organization_id: organizationId,
           worker_name: worker,
           day_of_week: day,
+          worker_role: entry.role,
           location: entry.location || 'Unassigned',
           time: entry.time || '',
           date: entry.date || null,
@@ -721,7 +727,7 @@ setUnassignedStations(unassigned);
     const datesOfWeek = {};
   
     for (const row of rows) {
-      const { worker_name, day_of_week, location, time, date } = row;
+      const { worker_name, day_of_week, location, time, date, worker_role } = row;
   
       if (!schedule[worker_name]) {
         schedule[worker_name] = {};
@@ -731,8 +737,10 @@ setUnassignedStations(unassigned);
         location,
         time,
         date,
+        worker_role,
       };
-  
+      console.log('here');
+      console.log(schedule);
       if (!datesOfWeek[day_of_week]) {
         datesOfWeek[day_of_week] = date;
       }
@@ -759,6 +767,7 @@ setUnassignedStations(unassigned);
           schedule[worker][day] = {
             location: 'Unassigned',
             time: '',
+            role: worker.role,
           };
         }
       });
@@ -1059,7 +1068,7 @@ setUnassignedStations(unassigned);
   }
   placeholder="Time"
 />
-
+<div>{daySchedule.role || daySchedule.worker_role || '—'}</div>
                     </td>
                   );
                 })}
@@ -1078,6 +1087,7 @@ setUnassignedStations(unassigned);
           <th>Day</th>
           <th>Location</th>
           <th>Time</th>
+          <th>Role</th>
           <th>Assign to Worker</th>
           <th>Action</th>
         </tr>
@@ -1100,6 +1110,7 @@ setUnassignedStations(unassigned);
                 onChange={(e) => handleUnassignedChange(index, 'time', e.target.value)}
               />
             </td>
+            <td>{station.role}</td>
             <td>
               <input
                 type="text"
@@ -1124,4 +1135,3 @@ setUnassignedStations(unassigned);
 };
 
 export default Dashboard;
-

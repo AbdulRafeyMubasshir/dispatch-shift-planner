@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import supabase from '../supabaseClient'; // Make sure the correct path to supabaseClient is set
+import { supabase } from '../supabaseClient'; // Make sure the correct path to supabaseClient is set
 import './Navigation.css';
 
 function Navigation({ user }) {

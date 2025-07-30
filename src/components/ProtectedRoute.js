@@ -1,6 +1,6 @@
 // src/components/ProtectedRoute.js
 import React, { useEffect, useState } from 'react';
-import supabase from '../supabaseClient'; // Import Supabase client
+import { supabase } from '../supabaseClient'; // Import Supabase client
 
 const ProtectedRoute = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import bcrypt from 'bcryptjs'; // Import bcryptjs to hash the password
-import supabase from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
 
 const RegisterOrganization = () => {
