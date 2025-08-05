@@ -201,34 +201,41 @@ setDatesOfWeek(newDatesOfWeek);
   };
 
   const calculateHoursWorked = (workerSchedule) => {
-    let totalHours = 0;
+  let totalHours = 0;
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-    daysOfWeek.forEach((day) => {
-      const entry = workerSchedule[day];
-      const timeRange = entry?.time;
+  daysOfWeek.forEach((day) => {
+    const entry = workerSchedule[day];
+    const timeRange = entry?.time;
 
-      if (timeRange && timeRange.includes('-')) {
-        const [start, end] = timeRange.split('-');
+    if (timeRange && timeRange.includes('-')) {
+      const [start, end] = timeRange.split('-');
 
-        if (start && end) {
-          const startHour = parseInt(start.slice(0, 2), 10);
-          const startMin = parseInt(start.slice(2), 10);
-          const endHour = parseInt(end.slice(0, 2), 10);
-          const endMin = parseInt(end.slice(2), 10);
+      if (start && end) {
+        const startHour = parseInt(start.slice(0, 2), 10);
+        const startMin = parseInt(start.slice(2), 10);
+        const endHour = parseInt(end.slice(0, 2), 10);
+        const endMin = parseInt(end.slice(2), 10);
 
-          const startDate = new Date(0, 0, 0, startHour, startMin);
-          const endDate = new Date(0, 0, 0, endHour, endMin);
-          const diff = (endDate - startDate) / (1000 * 60 * 60);
+        let startDate = new Date(0, 0, 0, startHour, startMin);
+        let endDate = new Date(0, 0, 0, endHour, endMin);
 
-          if (!isNaN(diff)) {
-            totalHours += diff;
-          }
+        // If end time is earlier than start time, assume it crosses midnight
+        if (endDate <= startDate) {
+          endDate = new Date(0, 0, 1, endHour, endMin); // Add one day to endDate
+        }
+
+        const diff = (endDate - startDate) / (1000 * 60 * 60);
+
+        if (!isNaN(diff)) {
+          totalHours += diff;
         }
       }
-    });
+    }
+  });
 
-    return totalHours.toFixed(2);
-  };
+  return totalHours.toFixed(2);
+};
 
   const exportToExcel = () => {
     const data = [];
