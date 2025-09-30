@@ -1,19 +1,9 @@
 import { supabase } from '../supabaseClient';
 
 const getShiftType = (time) => {
-  const [start, end] = time.split('-').map(t => parseInt(t));
-
-  // Convert times to minutes for flexibility
-  const startMin = Math.floor(start / 100) * 60 + (start % 100);
-  const endMin = Math.floor(end / 100) * 60 + (end % 100);
-
-  // Handle cross-midnight
-  const isOvernight = endMin <= startMin;
-
-  if (isOvernight) return 'night';
-  if (start >= 400 && start < 1200) return 'early';
-  if (start >= 1200 && start < 2300) return 'late';
-  return 'night';
+  const startTime = parseInt(time.split('-')[0]);
+  if (startTime < 1200) return 'early';
+  return 'late';
 };
 
 const getShiftDurationInHours = (time) => {
@@ -36,6 +26,23 @@ const getShiftEndInMinutes = (time) => {
 };
 
 const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+// Function to calculate the number of available days for a worker
+const getAvailableDaysCount = (availabilityByDay) => {
+  return daysOfWeek.reduce((count, day) => {
+    const preference = availabilityByDay[day];
+    return preference === 'any' || preference === 'early' || preference === 'late' ? count + 1 : count;
+  }, 0);
+};
+// Function to check if worker is available on Saturday or Sunday
+const hasWeekendAvailability = (availabilityByDay) => {
+  const saturday = availabilityByDay.saturday;
+  const sunday = availabilityByDay.sunday;
+  return (
+    (saturday === 'any' || saturday === 'early' || saturday === 'late') ||
+    (sunday === 'any' || sunday === 'early' || sunday === 'late')
+  );
+};
 
 const allocateWorkers = async () => {
   // 🔐 Get session
@@ -93,7 +100,25 @@ const allocateWorkers = async () => {
       friday: worker.friday?.toLowerCase() || null,
       saturday: worker.saturday?.toLowerCase() || null,
       sunday: worker.sunday?.toLowerCase() || null,
-    }
+    },
+  availableDaysCount: getAvailableDaysCount({
+    monday: worker.monday?.toLowerCase() || null,
+    tuesday: worker.tuesday?.toLowerCase() || null,
+    wednesday: worker.wednesday?.toLowerCase() || null,
+    thursday: worker.thursday?.toLowerCase() || null,
+    friday: worker.friday?.toLowerCase() || null,
+    saturday: worker.saturday?.toLowerCase() || null,
+    sunday: worker.sunday?.toLowerCase() || null,
+  }),
+  hasWeekend: hasWeekendAvailability({
+    monday: worker.monday?.toLowerCase() || null,
+    tuesday: worker.tuesday?.toLowerCase() || null,
+    wednesday: worker.wednesday?.toLowerCase() || null,
+    thursday: worker.thursday?.toLowerCase() || null,
+    friday: worker.friday?.toLowerCase() || null,
+    saturday: worker.saturday?.toLowerCase() || null,
+    sunday: worker.sunday?.toLowerCase() || null,
+  }),
   }));
 
   // 🔄 Process each station
@@ -129,15 +154,29 @@ const allocateWorkers = async () => {
       const exceedsLimit = currentHours + shiftDurationHours > 72;
       const hasMatchingRole = worker.role.toLowerCase() === station.role.toLowerCase();
 
-      return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole;
+      // Check if worker has less than 5 shifts assigned
+      const shiftCount = workerAllocations[worker.id]?.length || 0;
+      const withinShiftLimit = shiftCount < 5;
+
+      return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole && withinShiftLimit;
     });
 
     // 🔽 Sort by total hours worked so far
     eligibleWorkers.sort((a, b) => {
-      const hoursA = workerTotalHours[a.id] || 0;
-      const hoursB = workerTotalHours[b.id] || 0;
-      return hoursA - hoursB;
-    });
+  const availableDaysA = a.availableDaysCount;
+  const availableDaysB = b.availableDaysCount;
+  if (availableDaysA !== availableDaysB) {
+    return availableDaysB - availableDaysA; // Higher availability first
+  }
+  const hasWeekendA = a.hasWeekend;
+  const hasWeekendB = b.hasWeekend;
+  if (hasWeekendA !== hasWeekendB) {
+    return hasWeekendB - hasWeekendA; // Prefer workers with weekend availability
+  }
+  const hoursA = workerTotalHours[a.id] || 0;
+  const hoursB = workerTotalHours[b.id] || 0;
+  return hoursA - hoursB; // Lower hours worked first if availability is equal
+});
 
     const bestWorker = eligibleWorkers[0];
 

@@ -1,10 +1,78 @@
 import React, { useState, useEffect } from 'react';
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import * as XLSX from 'xlsx';
 import allocateWorkers from '../services/scheduler';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import './Dashboard.css';
 import { supabase } from '../supabaseClient';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+
+// SortableItem component for each table cell
+// SortableItem component for each table cell
+const SortableItem = ({ id, worker, day, daySchedule, stationColor, handleChange, setFocusedFieldValue, calculateShiftDuration, isScheduleLocked }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: isScheduleLocked });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    backgroundColor: stationColor,
+    opacity: isDragging ? 0.6 : 1,
+    border: isDragging ? '2px dashed #888' : '1px solid #ddd',
+  };
+
+  const shiftDuration = calculateShiftDuration(daySchedule.time);
+
+  return (
+    <td
+      ref={setNodeRef}
+      style={style}
+      {...(isScheduleLocked ? {} : { ...attributes, ...listeners })}
+      className={daySchedule.location === 'Unassigned' ? 'unassigned' : 'scheduled'}
+    >
+      <div>
+        <input
+          type="text"
+          value={daySchedule.location !== 'Unassigned' ? daySchedule.location : ''}
+          onFocus={() =>
+            !isScheduleLocked &&
+            setFocusedFieldValue({
+              worker,
+              day,
+              field: 'location',
+              value: daySchedule.location,
+            })
+          }
+          onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'location', e.target.value)}
+          placeholder="Location"
+          disabled={isScheduleLocked}
+        />
+        <input
+          type="text"
+          value={daySchedule.time}
+          onFocus={() =>
+            !isScheduleLocked &&
+            setFocusedFieldValue({
+              worker,
+              day,
+              field: 'time',
+              value: daySchedule.time,
+            })
+          }
+          onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'time', e.target.value)}
+          placeholder="Time"
+          disabled={isScheduleLocked}
+        />
+        <span className="shift-duration">
+          {daySchedule.time && shiftDuration !== '0.00' ? `${shiftDuration}` : '—'}
+        </span>
+      </div>
+    </td>
+  );
+};
 
 const Dashboard = () => {
   const [schedule, setSchedule] = useState({});
@@ -23,6 +91,7 @@ const Dashboard = () => {
   const [auditEntries, setAuditEntries] = useState([]);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [focusedFieldValue, setFocusedFieldValue] = useState(null);
+  const [isScheduleLocked, setIsScheduleLocked] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('workerSchedule');
@@ -160,31 +229,58 @@ setDatesOfWeek(newDatesOfWeek);
     return formattedSchedule;
   };
   
+  const predefinedStationColors = {
+  "LONDON BRIDGE": "#F4CCCC",
+  "CHARING CROSS": "#A64D79",
+  "WATERLOO EAST": "#00FFFF",
+  "LEWISHAM": "#F6B26B",
+  "BLACKHEATH": "#00FFFF",
+  "DARTFORD": "#6FA8DC",
+  "WOOLWICH ARSENAL": "#BDD7EE",
+  "SIDCUP": "#EA9999",
+  "SEVENOAKS": "#FFE599",
+  "OTFORD": "#EAD1DC",
+  "ASHFORD INTERNATIONAL": "#F39EFA",
+  "ASHFORD INTERNATIONAL (S)": "#E06666",
+  "TONBRIDGE": "#00B0F0",
+  "HASTINGS": "#B4A7D6",
+  "SITTINGBOURNE": "#92D050",
+  "RAMSGATE": "#46BDC6",
+  "DOVER PRIORY": "#FFD966",
+  "DEAL": "#FF00FF",
+  "MARGATE": "#FF6D01",
   
+  
+  // Add more as needed
+};
 
   const assignStationColors = (formattedSchedule) => {
-    const uniqueStations = new Set();
-    
-    Object.keys(formattedSchedule).forEach((worker) => {
-      daysOfWeek.forEach((day) => {
-        const station = formattedSchedule[worker][day].location;
-        if (station && station !== 'Unassigned') {
-          uniqueStations.add(station);
-        }
-      });
-    });
+  const uniqueStations = new Set();
 
-    const generatedColors = generateUniqueColors(uniqueStations.size);
-    const newStationColors = {};
-    
-    let index = 0;
-    uniqueStations.forEach((station) => {
-      newStationColors[station] = generatedColors[index];
-      index++;
+  Object.keys(formattedSchedule).forEach((worker) => {
+    daysOfWeek.forEach((day) => {
+      const station = formattedSchedule[worker][day].location;
+      if (station && station !== 'Unassigned') {
+        uniqueStations.add(station);
+      }
     });
+  });
 
-    setStationColors(newStationColors);
-  };
+  const newStationColors = {};
+
+  uniqueStations.forEach((station) => {
+  const upperCaseStation = station.toUpperCase();
+  if (predefinedStationColors[upperCaseStation]) {
+    newStationColors[station] = predefinedStationColors[upperCaseStation];
+  } else {
+    // Optional fallback
+    newStationColors[station] = "#cccccc";
+  }
+});
+
+
+  setStationColors(newStationColors);
+};
 
   const generateUniqueColors = (numColors) => {
     const colors = [];
@@ -200,9 +296,31 @@ setDatesOfWeek(newDatesOfWeek);
     return colors;
   };
 
+  const calculateShiftDuration = (timeRange) => {
+  if (!timeRange || !timeRange.includes('-')) return '0.00';
+
+  const [start, end] = timeRange.split('-');
+  if (!start || !end) return '0.00';
+
+  const startHour = parseInt(start.slice(0, 2), 10);
+  const startMin = parseInt(start.slice(2), 10);
+  const endHour = parseInt(end.slice(0, 2), 10);
+  const endMin = parseInt(end.slice(2), 10);
+
+  let startDate = new Date(0, 0, 0, startHour, startMin);
+  let endDate = new Date(0, 0, 0, endHour, endMin);
+
+  if (endDate <= startDate) {
+    endDate = new Date(0, 0, 1, endHour, endMin); // Handle midnight crossing
+  }
+
+  const diff = (endDate - startDate) / (1000 * 60 * 60);
+  return isNaN(diff) ? '0.00' : diff.toFixed(2);
+};
+
   const calculateHoursWorked = (workerSchedule) => {
   let totalHours = 0;
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
   daysOfWeek.forEach((day) => {
     const entry = workerSchedule[day];
