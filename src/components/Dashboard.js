@@ -93,6 +93,29 @@ const Dashboard = () => {
   const [focusedFieldValue, setFocusedFieldValue] = useState(null);
   const [isScheduleLocked, setIsScheduleLocked] = useState(false);
 
+  // Define the order you want
+const roleOrder = {
+  DISPATCHER: 1,
+  ATP: 2,
+  "Ticket Office": 3,
+  CS: 4,
+};
+
+// Utility function to get a worker's role from schedule
+const getWorkerRole = (worker) => {
+  const days = schedule[worker];
+  if (!days) return Infinity; // fallback
+  // just grab role from any day since it's consistent
+  return days[Object.keys(days)[0]]?.role || "CS"; 
+};
+
+// Sort workers before rendering
+const sortedWorkers = Object.keys(schedule).sort((a, b) => {
+  const roleA = getWorkerRole(a);
+  const roleB = getWorkerRole(b);
+  return (roleOrder[roleA] || 999) - (roleOrder[roleB] || 999);
+});
+
   useEffect(() => {
     const saved = localStorage.getItem('workerSchedule');
     if (saved) {
@@ -1148,7 +1171,7 @@ setUnassignedStations(unassigned);
             </tr>
           </thead>
           <tbody>
-            {Object.keys(schedule).map((worker) => (
+            {sortedWorkers.map((worker) => (
               <tr key={worker}>
                 <td>{worker}</td>
                 {daysOfWeek.map((day) => {
