@@ -82,9 +82,13 @@ const Workers = () => {
   
 
   const handleSaveModal = async () => {
+    // Trim the name field to remove leading/trailing spaces
+  const trimmedName = selectedWorker.name.trim();
+
     // Convert canworkstations string to array before saving
     const updatedWorker = {
       ...selectedWorker,
+      name: trimmedName, // Use trimmed name
       canworkstations: selectedWorker.canworkstations
         .split(',')
         .map((item) => item.trim())
@@ -106,6 +110,9 @@ const Workers = () => {
           saturday: updatedWorker.saturday,
           sunday: updatedWorker.sunday,
           role: updatedWorker.role,
+          email: updatedWorker.email,
+          mobile_number: updatedWorker.mobile_number,
+          payroll_number: updatedWorker.payroll_number,
         })
         .eq('id', updatedWorker.id)
         .select();
@@ -289,11 +296,15 @@ const Workers = () => {
             {['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'].map((day) => (
               <label key={day}>
                 {day.charAt(0).toUpperCase() + day.slice(1)}:
-                <input
-                  type="text"
-                  value={selectedWorker[day] || ''}
-                  onChange={(e) => handleModalInputChange(day, e.target.value)}
-                />
+                <select
+            value={selectedWorker[day] || ''}
+            onChange={(e) => handleModalInputChange(day, e.target.value)}
+          >
+            <option value="">Select</option>
+            <option value="Early">Early</option>
+            <option value="Late">Late</option>
+            <option value="Any">Any</option>
+          </select>
               </label>
             ))}
             <label>
@@ -310,6 +321,34 @@ const Workers = () => {
           type="text"
           value={selectedWorker.role || ''}
           onChange={(e) => handleModalInputChange('role', e.target.value)}
+        />
+      </label>
+
+      {/* New Fields to be displayed */}
+      <label>
+        Email:
+        <input
+          type="email"
+          value={selectedWorker.email || ''}
+          onChange={(e) => handleModalInputChange('email', e.target.value)}
+        />
+      </label>
+
+      <label>
+        Mobile Number:
+        <input
+          type="text"
+          value={selectedWorker.mobile_number || ''}
+          onChange={(e) => handleModalInputChange('mobile_number', e.target.value)}
+        />
+      </label>
+
+      <label>
+        Payroll Number:
+        <input
+          type="text"
+          value={selectedWorker.payroll_number || ''}
+          onChange={(e) => handleModalInputChange('payroll_number', e.target.value)}
         />
       </label>
 

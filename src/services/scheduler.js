@@ -34,6 +34,7 @@ const getAvailableDaysCount = (availabilityByDay) => {
     return preference === 'any' || preference === 'early' || preference === 'late' ? count + 1 : count;
   }, 0);
 };
+
 // Function to check if worker is available on Saturday or Sunday
 const hasWeekendAvailability = (availabilityByDay) => {
   const saturday = availabilityByDay.saturday;
@@ -43,6 +44,9 @@ const hasWeekendAvailability = (availabilityByDay) => {
     (sunday === 'any' || sunday === 'early' || sunday === 'late')
   );
 };
+
+// List of workers restricted to London Kings Cross Station
+const kingsCrossWorkers = ['Ali Husnain', 'Artur Pietrzela', 'Mark Smith', 'Ardeshir Abazi'];
 
 const allocateWorkers = async () => {
   // 🔐 Get session
@@ -101,24 +105,24 @@ const allocateWorkers = async () => {
       saturday: worker.saturday?.toLowerCase() || null,
       sunday: worker.sunday?.toLowerCase() || null,
     },
-  availableDaysCount: getAvailableDaysCount({
-    monday: worker.monday?.toLowerCase() || null,
-    tuesday: worker.tuesday?.toLowerCase() || null,
-    wednesday: worker.wednesday?.toLowerCase() || null,
-    thursday: worker.thursday?.toLowerCase() || null,
-    friday: worker.friday?.toLowerCase() || null,
-    saturday: worker.saturday?.toLowerCase() || null,
-    sunday: worker.sunday?.toLowerCase() || null,
-  }),
-  hasWeekend: hasWeekendAvailability({
-    monday: worker.monday?.toLowerCase() || null,
-    tuesday: worker.tuesday?.toLowerCase() || null,
-    wednesday: worker.wednesday?.toLowerCase() || null,
-    thursday: worker.thursday?.toLowerCase() || null,
-    friday: worker.friday?.toLowerCase() || null,
-    saturday: worker.saturday?.toLowerCase() || null,
-    sunday: worker.sunday?.toLowerCase() || null,
-  }),
+    availableDaysCount: getAvailableDaysCount({
+      monday: worker.monday?.toLowerCase() || null,
+      tuesday: worker.tuesday?.toLowerCase() || null,
+      wednesday: worker.wednesday?.toLowerCase() || null,
+      thursday: worker.thursday?.toLowerCase() || null,
+      friday: worker.friday?.toLowerCase() || null,
+      saturday: worker.saturday?.toLowerCase() || null,
+      sunday: worker.sunday?.toLowerCase() || null,
+    }),
+    hasWeekend: hasWeekendAvailability({
+      monday: worker.monday?.toLowerCase() || null,
+      tuesday: worker.tuesday?.toLowerCase() || null,
+      wednesday: worker.wednesday?.toLowerCase() || null,
+      thursday: worker.thursday?.toLowerCase() || null,
+      friday: worker.friday?.toLowerCase() || null,
+      saturday: worker.saturday?.toLowerCase() || null,
+      sunday: worker.sunday?.toLowerCase() || null,
+    }),
   }));
 
   // 🔄 Process each station
@@ -127,9 +131,17 @@ const allocateWorkers = async () => {
     const shiftDurationHours = getShiftDurationInHours(station.time);
     const currentStartInMinutes = getShiftStartInMinutes(station.time);
     const day = station.day.toLowerCase();
+    const isKingsCross = station.location.toLowerCase() === 'london kings cross station';
 
     // 🎯 Filter eligible workers
-    const eligibleWorkers = workers.filter((worker) => {
+    let eligibleWorkers = workers.filter((worker) => {
+      // Check if worker is one of the specified workers
+      const isRestrictedWorker = kingsCrossWorkers.includes(worker.name);
+
+      // For Kings Cross, only allow restricted workers; for other stations, exclude them
+      if (isKingsCross && !isRestrictedWorker) return false;
+      if (!isKingsCross && isRestrictedWorker) return false;
+
       const shiftPreference = worker.availabilityByDay[day];
       const isAvailable = shiftPreference === 'any' || shiftPreference === shiftType;
 
@@ -163,20 +175,20 @@ const allocateWorkers = async () => {
 
     // 🔽 Sort by total hours worked so far
     eligibleWorkers.sort((a, b) => {
-  const availableDaysA = a.availableDaysCount;
-  const availableDaysB = b.availableDaysCount;
-  if (availableDaysA !== availableDaysB) {
-    return availableDaysB - availableDaysA; // Higher availability first
-  }
-  const hasWeekendA = a.hasWeekend;
-  const hasWeekendB = b.hasWeekend;
-  if (hasWeekendA !== hasWeekendB) {
-    return hasWeekendB - hasWeekendA; // Prefer workers with weekend availability
-  }
-  const hoursA = workerTotalHours[a.id] || 0;
-  const hoursB = workerTotalHours[b.id] || 0;
-  return hoursA - hoursB; // Lower hours worked first if availability is equal
-});
+      const availableDaysA = a.availableDaysCount;
+      const availableDaysB = b.availableDaysCount;
+      if (availableDaysA !== availableDaysB) {
+        return availableDaysB - availableDaysA; // Higher availability first
+      }
+      const hasWeekendA = a.hasWeekend;
+      const hasWeekendB = b.hasWeekend;
+      if (hasWeekendA !== hasWeekendB) {
+        return hasWeekendB - hasWeekendA; // Prefer workers with weekend availability
+      }
+      const hoursA = workerTotalHours[a.id] || 0;
+      const hoursB = workerTotalHours[b.id] || 0;
+      return hoursA - hoursB; // Lower hours worked first if availability is equal
+    });
 
     const bestWorker = eligibleWorkers[0];
 

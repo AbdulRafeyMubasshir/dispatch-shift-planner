@@ -261,3 +261,71 @@ button:active {
   width: 90%;
   max-width: 800px;
 }
+/* Dashboard.css */
+/* Table cell styles */
+
+/* Visual feedback for draggable cells */
+.dashboard-table td:hover {
+  cursor: grab;
+}
+.dashboard-table td:active {
+  cursor: grabbing;
+}
+/* Input styles */
+
+/* Highlight drop target */
+.dashboard-table td.over {
+  background-color: #e0f7fa;
+  border: 2px solid #0288d1;
+}
+/* Ensure table layout is consistent */
+
+/* Unassigned and scheduled cell styles */
+.unassigned {
+  background-color: #f1f1f1;
+}
+
+.shift-duration {
+  display: block;
+  font-size: 14px;
+  color: #212121; /* Material Design Red 700 - a standout, vibrant red */
+  font-weight: 600;
+}
+.dashboard-container.locked {
+  background-color: #f5f5f5;
+  opacity: 0.9;
+}
+
+.dashboard-table input:disabled {
+  background-color: #e0e0e0;
+  cursor: not-allowed;
+}
+
+.unassigned-table input:disabled {
+  background-color: #e0e0e0;
+  cursor: not-allowed;
+}
+
+.unassigned-table button:disabled {
+  background-color: #e0e0e0;
+  cursor: not-allowed;
+}
+
+.lock-button {
+  background-color: #ff9800;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 5px;
+}
+
+.lock-button:hover {
+  background-color: #f57c00;
+}
+
+.lock-button:disabled {
+  background-color: #e0e0e0;
+  cursor: not-allowed;
+}
