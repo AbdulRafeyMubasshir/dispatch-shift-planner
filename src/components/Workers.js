@@ -304,6 +304,9 @@ const Workers = () => {
             <option value="Early">Early</option>
             <option value="Late">Late</option>
             <option value="Night">Night</option>
+            <option value="EL">Early or Late</option>
+            <option value="EN">Early or Night</option>
+            <option value="NL">Night or Late</option>
             <option value="Any">Any</option>
           </select>
               </label>
