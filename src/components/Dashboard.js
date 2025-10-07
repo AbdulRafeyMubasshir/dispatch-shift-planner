@@ -1765,37 +1765,37 @@ setUnassignedStations(unassigned);
             </tr>
           </thead>
           <tbody>
-            {Object.keys(schedule).map((worker) => (
-              <tr key={worker}>
-                <td>{worker}</td>
-                <SortableContext
-                    items={daysOfWeek.map((day) => `${worker}-${day}`)}
-                    strategy={rectSortingStrategy}
-                  >
-                {daysOfWeek.map((day) => {
-                  const daySchedule = schedule[worker][day];
-                  const stationColor = getStationColor(daySchedule.location);
-                  const id = `${worker}-${day}`;
-                  return (
-                        <SortableItem
-                          key={id}
-                          id={id}
-                          worker={worker}
-                          day={day}
-                          daySchedule={daySchedule}
-                          stationColor={stationColor}
-                          handleChange={handleChange}
-                          setFocusedFieldValue={setFocusedFieldValue}
-                          calculateShiftDuration={calculateShiftDuration}
-                          isScheduleLocked={isScheduleLocked}
-                        />
-                      );
-                })}
-                </SortableContext>
-                <td>{calculateHoursWorked(schedule[worker])}</td>
-              </tr>
-            ))}
-          </tbody>
+  {sortedWorkers.map((worker) => (
+    <tr key={worker}>
+      <td>{worker}</td>
+      <SortableContext
+        items={daysOfWeek.map((day) => `${worker}-${day}`)}
+        strategy={rectSortingStrategy}
+      >
+        {daysOfWeek.map((day) => {
+          const daySchedule = schedule[worker][day];
+          const stationColor = getStationColor(daySchedule.location);
+          const id = `${worker}-${day}`;
+          return (
+            <SortableItem
+              key={id}
+              id={id}
+              worker={worker}
+              day={day}
+              daySchedule={daySchedule}
+              stationColor={stationColor}
+              handleChange={handleChange}
+              setFocusedFieldValue={setFocusedFieldValue}
+              calculateShiftDuration={calculateShiftDuration}
+              isScheduleLocked={isScheduleLocked}
+            />
+          );
+        })}
+      </SortableContext>
+      <td>{calculateHoursWorked(schedule[worker])}</td>
+    </tr>
+  ))}
+</tbody>
         </table>
       </div>
       </DndContext>
