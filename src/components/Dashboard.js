@@ -576,7 +576,7 @@ for (let r = 3; r <= 5; r++) {
   /** -----------------------
    *  WORKER ROWS
    * ----------------------- */
-  Object.keys(schedule).forEach((worker) => {
+  sortedWorkers.forEach((worker) => {
     const startRow = worksheet.lastRow.number + 1;
 
     // Time row
