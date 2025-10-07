@@ -303,6 +303,7 @@ const Workers = () => {
             <option value="">Select</option>
             <option value="Early">Early</option>
             <option value="Late">Late</option>
+            <option value="Night">Night</option>
             <option value="Any">Any</option>
           </select>
               </label>
