@@ -135,28 +135,44 @@ const Dashboard = () => {
   fetchWorkers();
 }, []);
 
-  // Define the order you want
+  // Define the order you want with lowercase keys for case-insensitive matching
 const roleOrder = {
-  DISPATCHER: 1,
-  ATP: 2,
-  "Ticket Office": 3,
-  CS: 4,
+  dispatcher: 1,
+  atp: 2,
+  'ticket office': 3,
+  cs: 4,
 };
 
 // Utility function to get a worker's role from schedule
 const getWorkerRole = (worker) => {
   const days = schedule[worker];
   if (!days) return Infinity; // fallback
-  // just grab role from any day since it's consistent
-  return days[Object.keys(days)[0]]?.role || "CS"; 
+  // Get role from the first day and convert to lowercase for comparison
+  const role = days[Object.keys(days)[0]]?.role || 'cs';
+  return role.toLowerCase(); // Ensure case-insensitive comparison
 };
 
-// Sort workers before rendering
-const sortedWorkers = Object.keys(schedule).sort((a, b) => {
-  const roleA = getWorkerRole(a);
-  const roleB = getWorkerRole(b);
-  return (roleOrder[roleA] || 999) - (roleOrder[roleB] || 999);
-});
+// Define the priority workers
+const priorityWorkers = [
+  'Ali Husnain',
+  'Artur Pietrzela',
+  'Mark Smith',
+  'Ardeshir Abazi',
+];
+
+// Sort workers: prioritize the four specified workers, then sort the rest by role
+const sortedWorkers = [
+  // First, include priority workers in the specified order, only if they exist in the schedule
+  ...priorityWorkers.filter((worker) => schedule[worker]),
+  // Then, include remaining workers sorted by role, excluding priority workers
+  ...Object.keys(schedule)
+    .filter((worker) => !priorityWorkers.includes(worker))
+    .sort((a, b) => {
+      const roleA = getWorkerRole(a);
+      const roleB = getWorkerRole(b);
+      return (roleOrder[roleA] || 999) - (roleOrder[roleB] || 999);
+    }),
+];
 
   useEffect(() => {
     const saved = localStorage.getItem('workerSchedule');
@@ -295,24 +311,24 @@ setDatesOfWeek(newDatesOfWeek);
   };
   
   const predefinedStationColors = {
-  "LONDON KINGS CROSS STATION": "#AD75FF",
-  "KENTISH TOWN STATION": "#7030A0",
-  "FINSBURY PARK STATION": "#92D050",
-  "HATFILED (HERTS) STATION": "#2F75B5",
-  "ST NEOTS PLATFORMS": "#1F4E78",
-  "HITCHIN PLATFORMS": "#FF0000",
-  "HARRINGAY STATION": "#FFC000",
-  "FARRINGDON PLATFORMS": "#6D9EEB",
+  "KINGS CROSS": "#AD75FF",
+  "KENTISH TOWN": "#7030A0",
+  "FINSBURY PARK": "#92D050",
+  "HATFILED (HERTS)": "#2F75B5",
+  "ST NEOTS": "#1F4E78",
+  "HITCHIN": "#FF0000",
+  "HARRINGAY": "#FFC000",
+  "FARRINGDON": "#6D9EEB",
   "FARRINGDON CS": "#6D9EEB",
-  "BEDFORD STATION": "#D9D2E9",
-  "BLACKFRIARS PLATFORMS": "#FFD1F8",
-  "STEVENAGE PLATFORMS": "#0000FF",
-  "ST ALBANS CITY STATION": "#00FFFF",
-  "LUTON STATION": "#FFFF00",
-  "CITY THAMESLINK PLATFORMS": "#E5EC8C",
-  "GORDON HILL STATION": "#CCCCFF",
-  "WEST HAMPSTEAD PLATFORMS": "#FF5D5D",
-  "ELEPHANT AND CASTLE PLATFORMS": "#F4AED6",
+  "BEDFORD": "#D9D2E9",
+  "BLACKFRIARS": "#FFD1F8",
+  "STEVENAGE": "#0000FF",
+  "ST ALBANS CITY": "#00FFFF",
+  "LUTON": "#FFFF00",
+  "CITY THAMESLINK": "#E5EC8C",
+  "GORDON HILL": "#CCCCFF",
+  "WEST HAMPSTEAD": "#FF5D5D",
+  "ELEPHANT AND CASTLE": "#F4AED6",
   "HERTFORD NORTH ATP": "#BDD7EE",
   "MARGATE": "#FF6D01",
   "SITTINGBOURNE": "#92D050",

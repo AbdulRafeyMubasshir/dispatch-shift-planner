@@ -1,9 +1,14 @@
 import { supabase } from '../supabaseClient';
 
 const getShiftType = (time) => {
-  const startTime = parseInt(time.split('-')[0]);
-  if (startTime < 1200) return 'early';
-  return 'late';
+  const [start, end] = time.split('-').map(t => parseInt(t));
+  const startMin = Math.floor(start / 100) * 60 + (start % 100);
+  const endMin = Math.floor(end / 100) * 60 + (end % 100);
+  const isOvernight = endMin <= startMin;
+  if (isOvernight) return 'night';
+  if (start >= 400 && start < 1200) return 'early';
+  if (start >= 1200 && start < 2300) return 'late';
+  return 'night';
 };
 
 const getShiftDurationInHours = (time) => {
@@ -27,11 +32,25 @@ const getShiftEndInMinutes = (time) => {
 
 const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
+// Mapping of worker availability to allowed shift types
+const availabilityToShiftTypes = {
+  'early': ['early'],
+  'late': ['late'],
+  'night': ['night'],
+  'any': ['early', 'late', 'night'],
+  'early/late': ['early', 'late'],
+  'early/night': ['early', 'night'],
+  'late/night': ['late', 'night'],
+  '': [],
+  null: [],
+};
+
 // Function to calculate the number of available days for a worker
 const getAvailableDaysCount = (availabilityByDay) => {
   return daysOfWeek.reduce((count, day) => {
     const preference = availabilityByDay[day];
-    return preference === 'any' || preference === 'early' || preference === 'late' ? count + 1 : count;
+    const allowedShifts = availabilityToShiftTypes[preference] || [];
+    return allowedShifts.length > 0 ? count + 1 : count;
   }, 0);
 };
 
@@ -39,10 +58,9 @@ const getAvailableDaysCount = (availabilityByDay) => {
 const hasWeekendAvailability = (availabilityByDay) => {
   const saturday = availabilityByDay.saturday;
   const sunday = availabilityByDay.sunday;
-  return (
-    (saturday === 'any' || saturday === 'early' || saturday === 'late') ||
-    (sunday === 'any' || sunday === 'early' || sunday === 'late')
-  );
+  const saturdayShifts = availabilityToShiftTypes[saturday] || [];
+  const sundayShifts = availabilityToShiftTypes[sunday] || [];
+  return saturdayShifts.length > 0 || sundayShifts.length > 0;
 };
 
 // List of workers restricted to London Kings Cross Station
@@ -125,25 +143,30 @@ const allocateWorkers = async () => {
     }),
   }));
 
-  // 🔄 Process each station
-  return stationsData.map((station) => {
+  // First Pass: Process only Kings Cross stations with kingsCrossWorkers
+  const firstPassResults = stationsData.map((station) => {
+    // Updated Logic: Using station.location.toLowerCase() === 'kings cross' checks 
+    // if the string "kings cross" matches exactly, maintaining original condition.
+    const isKingsCross = station.location.toLowerCase() === 'kings cross';
+    if (!isKingsCross) {
+      return { ...station, allocatedTo: 'Unassigned' };
+    }
+
     const shiftType = getShiftType(station.time).toLowerCase();
     const shiftDurationHours = getShiftDurationInHours(station.time);
     const currentStartInMinutes = getShiftStartInMinutes(station.time);
+    const currentEndInMinutes = getShiftEndInMinutes(station.time); // Added for next-day rest check
     const day = station.day.toLowerCase();
-    const isKingsCross = station.location.toLowerCase() === 'london kings cross station';
 
     // 🎯 Filter eligible workers
     let eligibleWorkers = workers.filter((worker) => {
       // Check if worker is one of the specified workers
       const isRestrictedWorker = kingsCrossWorkers.includes(worker.name);
-
-      // For Kings Cross, only allow restricted workers; for other stations, exclude them
-      if (isKingsCross && !isRestrictedWorker) return false;
-      if (!isKingsCross && isRestrictedWorker) return false;
+      if (!isRestrictedWorker) return false;
 
       const shiftPreference = worker.availabilityByDay[day];
-      const isAvailable = shiftPreference === 'any' || shiftPreference === shiftType;
+      const allowedShifts = availabilityToShiftTypes[shiftPreference] || [];
+      const isAvailable = allowedShifts.includes(shiftType);
 
       const canWorkAtLocation = worker.canworkstations
         .map(loc => loc.toLowerCase())
@@ -153,11 +176,20 @@ const allocateWorkers = async () => {
 
       const todayIndex = daysOfWeek.indexOf(day);
       const prevDay = todayIndex > 0 ? daysOfWeek[todayIndex - 1] : null;
+      const nextDay = todayIndex < daysOfWeek.length - 1 ? daysOfWeek[todayIndex + 1] : null;
 
       let hasEnoughRest = true;
+      // Check rest period from previous day's shift end to current shift start
       if (prevDay && workerShiftHistory[worker.id]?.[prevDay]) {
         const prevEnd = getShiftEndInMinutes(workerShiftHistory[worker.id][prevDay].time);
         let diff = currentStartInMinutes - prevEnd;
+        if (diff < 0) diff += 1440;
+        hasEnoughRest = diff >= 720;
+      }
+      // Check rest period from current shift end to next day's shift start
+      if (hasEnoughRest && nextDay && workerShiftHistory[worker.id]?.[nextDay]) {
+        const nextStart = getShiftStartInMinutes(workerShiftHistory[worker.id][nextDay].time);
+        let diff = nextStart - currentEndInMinutes;
         if (diff < 0) diff += 1440;
         hasEnoughRest = diff >= 720;
       }
@@ -169,6 +201,108 @@ const allocateWorkers = async () => {
       // Check if worker has less than 5 shifts assigned
       const shiftCount = workerAllocations[worker.id]?.length || 0;
       const withinShiftLimit = shiftCount < 5;
+
+      
+
+      return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole && withinShiftLimit;
+    });
+
+    // 🔽 Sort by total hours worked so far
+    eligibleWorkers.sort((a, b) => {
+      const availableDaysA = a.availableDaysCount;
+      const availableDaysB = b.availableDaysCount;
+      /*
+      if (availableDaysA !== availableDaysB) {
+        return availableDaysB - availableDaysA; // Higher availability first
+      }
+      const hasWeekendA = a.hasWeekend;
+      const hasWeekendB = b.hasWeekend;
+      if (hasWeekendA !== hasWeekendB) {
+        return hasWeekendB - hasWeekendA; // Prefer workers with weekend availability
+      }
+        */
+      const hoursA = workerTotalHours[a.id] || 0;
+      const hoursB = workerTotalHours[b.id] || 0;
+      return hoursA - hoursB; // Lower hours worked first if availability is equal
+    });
+
+    const bestWorker = eligibleWorkers[0];
+
+    if (bestWorker) {
+      // Update tracking
+      if (!workerAllocations[bestWorker.id]) workerAllocations[bestWorker.id] = [];
+      if (!workerShiftHistory[bestWorker.id]) workerShiftHistory[bestWorker.id] = {};
+      if (!workerTotalHours[bestWorker.id]) workerTotalHours[bestWorker.id] = 0;
+
+      workerAllocations[bestWorker.id].push(day);
+      workerShiftHistory[bestWorker.id][day] = { shiftType, time: station.time };
+      workerTotalHours[bestWorker.id] += shiftDurationHours;
+
+      return {
+        ...station,
+        allocatedTo: bestWorker.name,
+      };
+    } else {
+      return {
+        ...station,
+        allocatedTo: 'Unassigned',
+      };
+    }
+  });
+
+  // Second Pass: Process unassigned stations with all workers
+  const finalResults = firstPassResults.map((station) => {
+    if (station.allocatedTo !== 'Unassigned') {
+      return station; // Skip already assigned stations
+    }
+
+    const shiftType = getShiftType(station.time).toLowerCase();
+    const shiftDurationHours = getShiftDurationInHours(station.time);
+    const currentStartInMinutes = getShiftStartInMinutes(station.time);
+    const currentEndInMinutes = getShiftEndInMinutes(station.time); // Added for next-day rest check
+    const day = station.day.toLowerCase();
+
+    // 🎯 Filter eligible workers
+    let eligibleWorkers = workers.filter((worker) => {
+      const shiftPreference = worker.availabilityByDay[day];
+      const allowedShifts = availabilityToShiftTypes[shiftPreference] || [];
+      const isAvailable = allowedShifts.includes(shiftType);
+
+      const canWorkAtLocation = worker.canworkstations
+        .map(loc => loc.toLowerCase())
+        .includes(station.location.toLowerCase());
+
+      const isNotAllocatedForDay = !workerAllocations[worker.id]?.includes(day);
+
+      const todayIndex = daysOfWeek.indexOf(day);
+      const prevDay = todayIndex > 0 ? daysOfWeek[todayIndex - 1] : null;
+      const nextDay = todayIndex < daysOfWeek.length - 1 ? daysOfWeek[todayIndex + 1] : null;
+
+      let hasEnoughRest = true;
+      // Check rest period from previous day's shift end to current shift start
+      if (prevDay && workerShiftHistory[worker.id]?.[prevDay]) {
+        const prevEnd = getShiftEndInMinutes(workerShiftHistory[worker.id][prevDay].time);
+        let diff = currentStartInMinutes - prevEnd;
+        if (diff < 0) diff += 1440;
+        hasEnoughRest = diff >= 720;
+      }
+      // Check rest period from current shift end to next day's shift start
+      if (hasEnoughRest && nextDay && workerShiftHistory[worker.id]?.[nextDay]) {
+        const nextStart = getShiftStartInMinutes(workerShiftHistory[worker.id][nextDay].time);
+        let diff = nextStart - currentEndInMinutes;
+        if (diff < 0) diff += 1440;
+        hasEnoughRest = diff >= 720;
+      }
+
+      const currentHours = workerTotalHours[worker.id] || 0;
+      const exceedsLimit = currentHours + shiftDurationHours > 72;
+      const hasMatchingRole = worker.role.toLowerCase() === station.role.toLowerCase();
+
+      // Check if worker has less than 5 shifts assigned
+      const shiftCount = workerAllocations[worker.id]?.length || 0;
+      const withinShiftLimit = shiftCount < 5;
+
+      
 
       return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole && withinShiftLimit;
     });
@@ -213,6 +347,8 @@ const allocateWorkers = async () => {
       };
     }
   });
+
+  return finalResults;
 };
 
 export default allocateWorkers;
