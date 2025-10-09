@@ -42,6 +42,8 @@ const availabilityToShiftTypes = {
   'early/night': ['early', 'night'],
   'late/night': ['late', 'night'],
   '': [],
+  'n/a': [],
+  'al': [],
   null: [],
 };
 
