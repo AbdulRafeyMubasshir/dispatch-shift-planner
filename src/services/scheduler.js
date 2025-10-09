@@ -155,7 +155,7 @@ const allocateWorkers = async () => {
     const shiftType = getShiftType(station.time).toLowerCase();
     const shiftDurationHours = getShiftDurationInHours(station.time);
     const currentStartInMinutes = getShiftStartInMinutes(station.time);
-    const currentEndInMinutes = getShiftEndInMinutes(station.time); // Added for next-day rest check
+    const currentEndInMinutes = getShiftEndInMinutes(station.time);
     const day = station.day.toLowerCase();
 
     // 🎯 Filter eligible workers
@@ -179,19 +179,36 @@ const allocateWorkers = async () => {
       const nextDay = todayIndex < daysOfWeek.length - 1 ? daysOfWeek[todayIndex + 1] : null;
 
       let hasEnoughRest = true;
-      // Check rest period from previous day's shift end to current shift start
+      // Check rest period from previous day's shift
       if (prevDay && workerShiftHistory[worker.id]?.[prevDay]) {
-        const prevEnd = getShiftEndInMinutes(workerShiftHistory[worker.id][prevDay].time);
-        let diff = currentStartInMinutes - prevEnd;
-        if (diff < 0) diff += 1440;
-        hasEnoughRest = diff >= 720;
+        const prevTime = workerShiftHistory[worker.id][prevDay].time;
+        const prevStart = getShiftStartInMinutes(prevTime);
+        const prevEnd = getShiftEndInMinutes(prevTime);
+        const isPrevOvernight = prevEnd <= prevStart;
+        let restMinutes;
+        if (!isPrevOvernight) {
+          // Non-overnight: (prev end to midnight) + (midnight to current start)
+          restMinutes = (1440 - prevEnd) + currentStartInMinutes;
+        } else {
+          // Overnight: current start - prev end (both from midnight)
+          restMinutes = currentStartInMinutes - prevEnd;
+        }
+        hasEnoughRest = restMinutes >= 720;
       }
-      // Check rest period from current shift end to next day's shift start
+      // Check rest period to next day's shift
       if (hasEnoughRest && nextDay && workerShiftHistory[worker.id]?.[nextDay]) {
-        const nextStart = getShiftStartInMinutes(workerShiftHistory[worker.id][nextDay].time);
-        let diff = nextStart - currentEndInMinutes;
-        if (diff < 0) diff += 1440;
-        hasEnoughRest = diff >= 720;
+        const nextTime = workerShiftHistory[worker.id][nextDay].time;
+        const nextStart = getShiftStartInMinutes(nextTime);
+        const isCurrentOvernight = currentEndInMinutes <= currentStartInMinutes;
+        let restMinutes;
+        if (!isCurrentOvernight) {
+          // Non-overnight: (current end to midnight) + (midnight to next start)
+          restMinutes = (1440 - currentEndInMinutes) + nextStart;
+        } else {
+          // Overnight: next start - current end (both from midnight)
+          restMinutes = nextStart - currentEndInMinutes;
+        }
+        hasEnoughRest = restMinutes >= 720;
       }
 
       const currentHours = workerTotalHours[worker.id] || 0;
@@ -259,7 +276,7 @@ const allocateWorkers = async () => {
     const shiftType = getShiftType(station.time).toLowerCase();
     const shiftDurationHours = getShiftDurationInHours(station.time);
     const currentStartInMinutes = getShiftStartInMinutes(station.time);
-    const currentEndInMinutes = getShiftEndInMinutes(station.time); // Added for next-day rest check
+    const currentEndInMinutes = getShiftEndInMinutes(station.time);
     const day = station.day.toLowerCase();
 
     // 🎯 Filter eligible workers
@@ -279,19 +296,36 @@ const allocateWorkers = async () => {
       const nextDay = todayIndex < daysOfWeek.length - 1 ? daysOfWeek[todayIndex + 1] : null;
 
       let hasEnoughRest = true;
-      // Check rest period from previous day's shift end to current shift start
+      // Check rest period from previous day's shift
       if (prevDay && workerShiftHistory[worker.id]?.[prevDay]) {
-        const prevEnd = getShiftEndInMinutes(workerShiftHistory[worker.id][prevDay].time);
-        let diff = currentStartInMinutes - prevEnd;
-        if (diff < 0) diff += 1440;
-        hasEnoughRest = diff >= 720;
+        const prevTime = workerShiftHistory[worker.id][prevDay].time;
+        const prevStart = getShiftStartInMinutes(prevTime);
+        const prevEnd = getShiftEndInMinutes(prevTime);
+        const isPrevOvernight = prevEnd <= prevStart;
+        let restMinutes;
+        if (!isPrevOvernight) {
+          // Non-overnight: (prev end to midnight) + (midnight to current start)
+          restMinutes = (1440 - prevEnd) + currentStartInMinutes;
+        } else {
+          // Overnight: current start - prev end (both from midnight)
+          restMinutes = currentStartInMinutes - prevEnd;
+        }
+        hasEnoughRest = restMinutes >= 720;
       }
-      // Check rest period from current shift end to next day's shift start
+      // Check rest period to next day's shift
       if (hasEnoughRest && nextDay && workerShiftHistory[worker.id]?.[nextDay]) {
-        const nextStart = getShiftStartInMinutes(workerShiftHistory[worker.id][nextDay].time);
-        let diff = nextStart - currentEndInMinutes;
-        if (diff < 0) diff += 1440;
-        hasEnoughRest = diff >= 720;
+        const nextTime = workerShiftHistory[worker.id][nextDay].time;
+        const nextStart = getShiftStartInMinutes(nextTime);
+        const isCurrentOvernight = currentEndInMinutes <= currentStartInMinutes;
+        let restMinutes;
+        if (!isCurrentOvernight) {
+          // Non-overnight: (current end to midnight) + (midnight to next start)
+          restMinutes = (1440 - currentEndInMinutes) + nextStart;
+        } else {
+          // Overnight: next start - current end (both from midnight)
+          restMinutes = nextStart - currentEndInMinutes;
+        }
+        hasEnoughRest = restMinutes >= 720;
       }
 
       const currentHours = workerTotalHours[worker.id] || 0;
