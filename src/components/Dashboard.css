@@ -329,3 +329,21 @@ button:active {
   background-color: #e0e0e0;
   cursor: not-allowed;
 }
+.context-menu {
+  position: fixed; /* Already set inline, but ensure consistency */
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 5px;
+  border-radius: 4px;
+  z-index: 10000; /* Already set inline, but for completeness */
+}
+
+.context-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.context-menu-item:hover {
+  background: #f0f0f0;
+}
