@@ -169,6 +169,7 @@ const Dashboard = () => {
   const [workers, setWorkers] = useState([]);
   const [contextMenuOpen, setContextMenuOpen] = useState(false); // Track if any context menu is open
   const [closeAllContextMenus, setCloseAllContextMenus] = useState(false); // Trigger to close all menus
+  const [workerRoles, setWorkerRoles] = useState({}); // New state to store name-role pairs
 
 
   useEffect(() => {
@@ -195,15 +196,24 @@ const Dashboard = () => {
       const organizationId = profile.organization_id;
       const { data: workersData, error: workerError } = await supabase
         .from('workers')
-        .select('name')
-        .eq('organization_id', organizationId);
+        .select('name, role') // Fetch name and role
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: true }); // Maintain created_at order
 
       if (workerError) {
         console.error('Error fetching workers:', workerError);
         return;
       }
 
-      setWorkers(workersData.map(worker => worker.name).sort());
+      // Set workers as array of names (unchanged)
+      setWorkers(workersData.map((worker) => worker.name));
+      // Set workerRoles as object mapping names to roles
+      setWorkerRoles(
+        workersData.reduce((acc, worker) => {
+          acc[worker.name] = worker.role?.toLowerCase() || ''; // Use empty string if role is null
+          return acc;
+        }, {})
+      );
     } catch (error) {
       console.error('Error in fetchWorkers:', error);
     }
@@ -229,26 +239,34 @@ const getWorkerRole = (worker) => {
   return role.toLowerCase(); // Ensure case-insensitive comparison
 };
 
-// Define the priority workers
-const priorityWorkers = [
-  'Ali Husnain',
-  'Artur Pietrzela',
-  'Mark Smith',
-  'Ardeshir Abazi',
-];
 
-// Sort workers: prioritize the four specified workers, then sort the rest by role
+
+// Sort workers: group by role and sort by role order, preserving workers array order within roles
 const sortedWorkers = [
-  // First, include priority workers in the specified order, only if they exist in the schedule
-  ...priorityWorkers.filter((worker) => schedule[worker]),
-  // Then, include remaining workers sorted by role, excluding priority workers
-  ...Object.keys(schedule)
-    .filter((worker) => !priorityWorkers.includes(worker))
-    .sort((a, b) => {
-      const roleA = getWorkerRole(a);
-      const roleB = getWorkerRole(b);
-      return (roleOrder[roleA] || 999) - (roleOrder[roleB] || 999);
-    }),
+  // Include all workers from schedule, grouped by role and sorted by role order
+  ...(() => {
+    // Create initial order from workers array, filtered by schedule
+    const initialOrder = workers.filter((worker) => schedule[worker]);
+    
+    // Group workers by role while preserving initial order
+    const groupedByRole = {};
+    initialOrder.forEach((worker) => {
+      const role = getWorkerRole(worker);
+      if (!groupedByRole[role]) {
+        groupedByRole[role] = [];
+      }
+      groupedByRole[role].push(worker);
+    });
+    
+    // Sort roles by roleOrder and flatten
+    return Object.keys(groupedByRole)
+      .sort((a, b) => {
+        const roleOrderA = roleOrder[a] || 999;
+        const roleOrderB = roleOrder[b] || 999;
+        return roleOrderA - roleOrderB;
+      })
+      .flatMap((role) => groupedByRole[role]);
+  })(),
 ];
 
   useEffect(() => {
@@ -300,109 +318,129 @@ const sortedWorkers = [
   }, [contextMenuOpen]);
 
   const formatSchedule = async (allocatedSchedule) => {
-    const formattedSchedule = {};
-  
-    // Step 1: Fill in assigned workers
-    allocatedSchedule.forEach((station) => {
-      if (station.allocatedTo && station.allocatedTo !== 'Unassigned') {
-        const worker = station.allocatedTo;
-  
+  const formattedSchedule = {};
+
+  // Step 1: Fetch user and organization details
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session?.user) {
+    throw new Error("User not logged in");
+  }
+
+  const userId = session.user.id;
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('organization_id')
+    .eq('id', userId)
+    .single();
+
+  if (profileError || !profile) {
+    throw new Error("Could not fetch user profile");
+  }
+
+  const organizationId = profile.organization_id;
+
+  // Step 2: Fetch workers' availability data (including day columns)
+  const { data: workersData, error: workerError } = await supabase
+    .from('workers')
+    .select('name, role, monday, tuesday, wednesday, thursday, friday, saturday, sunday')
+    .eq('organization_id', organizationId);
+
+  if (workerError) {
+    throw new Error("Could not fetch workers: " + workerError.message);
+  }
+
+  // Step 3: Fetch unique dates from the stations table
+  const { data: stations, error: stationsError } = await supabase
+    .from('stations')
+    .select('date')
+    .eq('organization_id', organizationId);
+
+  if (stationsError) {
+    throw new Error("Could not fetch stations data");
+  }
+
+  // Map unique dates to days of the week
+  const uniqueDates = [...new Set(stations.map(row => row.date))].sort((a, b) => new Date(a) - new Date(b));
+  const newDatesOfWeek = {};
+  daysOfWeek.forEach((day, index) => {
+    const date = uniqueDates[index];
+    if (date) {
+      newDatesOfWeek[day] = date;
+    }
+  });
+  setDatesOfWeek(newDatesOfWeek);
+
+  // Step 4: Create a map of worker availability
+  const workerAvailability = {};
+  workersData.forEach((worker) => {
+    workerAvailability[worker.name] = {
+      monday: worker.monday?.toLowerCase(),
+      tuesday: worker.tuesday?.toLowerCase(),
+      wednesday: worker.wednesday?.toLowerCase(),
+      thursday: worker.thursday?.toLowerCase(),
+      friday: worker.friday?.toLowerCase(),
+      saturday: worker.saturday?.toLowerCase(),
+      sunday: worker.sunday?.toLowerCase(),
+      role: worker.role?.toLowerCase() || '',
+    };
+  });
+
+  // Step 5: Fill in assigned workers from allocatedSchedule
+  allocatedSchedule.forEach((station) => {
+    if (station.allocatedTo && station.allocatedTo !== 'Unassigned') {
+      const worker = station.allocatedTo;
+      const day = station.day.toLowerCase();
+      const availability = workerAvailability[worker]?.[day];
+
+      // Only assign if the worker is available (i.e., not N/A, AL, or Rest Day)
+      if (availability && !['n/a', 'al', 'rest day'].includes(availability)) {
         if (!formattedSchedule[worker]) {
           formattedSchedule[worker] = {};
         }
-  
         formattedSchedule[worker][station.day] = {
           location: station.location,
           time: station.time,
           date: station.date,
-          role: station.role,
+          role: station.role || workerAvailability[worker].role,
         };
       }
-    });
-  
-    // Step 2: Fill in unassigned days for workers who were assigned
-    Object.keys(formattedSchedule).forEach((worker) => {
-      daysOfWeek.forEach((day) => {
-        if (!formattedSchedule[worker][day]) {
-          formattedSchedule[worker][day] = {
-            location: 'Unassigned',
-            time: '',
-            role: worker.role,
-          };
-        }
-      });
-    });
-  
-    // ✅ Step 3: Ensure all uploaded workers are included from Supabase
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session?.user) {
-      throw new Error("User not logged in");
     }
-  
-    const userId = session.user.id;
-  
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('organization_id')
-      .eq('id', userId)
-      .single();
-  
-    if (profileError || !profile) {
-      throw new Error("Could not fetch user profile");
+  });
+
+  // Step 6: Ensure all workers are included and fill unassigned days
+  workersData.forEach((worker) => {
+    const workerName = worker.name;
+    if (!formattedSchedule[workerName]) {
+      formattedSchedule[workerName] = {};
     }
-  
-    const organizationId = profile.organization_id;
-  
-    const { data: workersData, error: workerError } = await supabase
-      .from('workers')
-      .select('name')
-      .eq('organization_id', organizationId);
-  
-    if (workerError) {
-      throw new Error("Could not fetch workers");
-    }
-    // Step 2: Fetch unique dates from the stations table for the organization
-    const { data: stations, error: stationsError } = await supabase
-    .from('stations')
-    .select('date', { distinct: true })
-    .eq('organization_id', organizationId);
 
-if (stationsError) {
-  throw new Error("Could not fetch stations data");
-}
+    daysOfWeek.forEach((day) => {
+      const dayLower = day.toLowerCase();
+      const availability = workerAvailability[workerName]?.[dayLower] || 'n/a';
 
-// Step 3: Map the unique dates to the corresponding days of the week
-const uniqueDates = [...new Set(stations.map(row => row.date))].sort((a, b) => new Date(a) - new Date(b));;
-const newDatesOfWeek = {};
-daysOfWeek.forEach((day, index) => {
-  const date = uniqueDates[index];
-  if (date) {
-    newDatesOfWeek[day] = date;
-  }
-});
-
-setDatesOfWeek(newDatesOfWeek);
-    const workers = JSON.parse(JSON.stringify(workersData)); // Keep consistent with original code
-  
-    workers.forEach((worker) => {
-      const workerName = worker.name;
-  
-      if (!formattedSchedule[workerName]) {
-        formattedSchedule[workerName] = {};
-  
-        daysOfWeek.forEach((day) => {
-          formattedSchedule[workerName][day] = {
-            location: 'Unassigned',
-            time: '',
-            date: newDatesOfWeek[day] || '',
-            role: worker.role,
-          };
-        });
+      // If the day is already assigned, skip to avoid overwriting
+      if (formattedSchedule[workerName][day]) {
+        return;
       }
+
+      // Set time based on availability
+      let timeValue = '';
+      let locationValue = 'Unassigned';
+      if (['n/a', 'al', 'rest day'].includes(availability)) {
+        timeValue = availability.toUpperCase(); // Use N/A, AL, or Rest Day
+      }
+
+      formattedSchedule[workerName][day] = {
+        location: locationValue,
+        time: timeValue,
+        date: newDatesOfWeek[day] || '',
+        role: workerAvailability[workerName].role,
+      };
     });
-  
-    return formattedSchedule;
-  };
+  });
+
+  return formattedSchedule;
+};
   
   const predefinedStationColors = {
   "KINGS CROSS": "#AD75FF",

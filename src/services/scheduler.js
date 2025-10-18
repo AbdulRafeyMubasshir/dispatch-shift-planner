@@ -100,13 +100,20 @@ const allocateWorkers = async () => {
 
   const { data: stationsData, error: stationError } = await supabase
     .from('stations')
-    .select('*')
+    .select('*, hours') // Include hours column
     .eq('organization_id', organizationId);
 
   if (workerError || stationError) {
     console.error('Error fetching data:', workerError || stationError);
     return [];
   }
+
+  // 📈 Sort stations by hours in descending order
+  const sortedStationsData = [...stationsData].sort((a, b) => {
+    const hoursA = Number(a.hours) || 0; // Convert to number, default to 0 if null/undefined
+    const hoursB = Number(b.hours) || 0;
+    return hoursB - hoursA; // Descending order
+  });
 
   // 📊 Setup tracking
   const workerAllocations = {};
@@ -146,25 +153,21 @@ const allocateWorkers = async () => {
       sunday: worker.sunday?.toLowerCase() || null,
     }),
   }));
-
   // First Pass: Process only Kings Cross stations with kingsCrossWorkers
-  const firstPassResults = stationsData.map((station) => {
-    // Updated Logic: Using station.location.toLowerCase() === 'kings cross' checks 
-    // if the string "kings cross" matches exactly, maintaining original condition.
+  const firstPassResults = sortedStationsData.map((station) => {
     const isKingsCross = station.location.toLowerCase() === 'kings cross';
     if (!isKingsCross) {
       return { ...station, allocatedTo: 'Unassigned' };
     }
 
     const shiftType = getShiftType(station.time).toLowerCase();
-    const shiftDurationHours = getShiftDurationInHours(station.time);
+    const shiftDurationHours = Number(station.hours) || getShiftDurationInHours(station.time); // Use hours column if available
     const currentStartInMinutes = getShiftStartInMinutes(station.time);
     const currentEndInMinutes = getShiftEndInMinutes(station.time);
     const day = station.day.toLowerCase();
 
     // 🎯 Filter eligible workers
     let eligibleWorkers = workers.filter((worker) => {
-      // Check if worker is one of the specified workers
       const isRestrictedWorker = kingsCrossWorkers.includes(worker.name);
       if (!isRestrictedWorker) return false;
 
@@ -183,7 +186,6 @@ const allocateWorkers = async () => {
       const nextDay = todayIndex < daysOfWeek.length - 1 ? daysOfWeek[todayIndex + 1] : null;
 
       let hasEnoughRest = true;
-      // Check rest period from previous day's shift
       if (prevDay && workerShiftHistory[worker.id]?.[prevDay]) {
         const prevTime = workerShiftHistory[worker.id][prevDay].time;
         const prevStart = getShiftStartInMinutes(prevTime);
@@ -191,25 +193,20 @@ const allocateWorkers = async () => {
         const isPrevOvernight = prevEnd <= prevStart;
         let restMinutes;
         if (!isPrevOvernight) {
-          // Non-overnight: (prev end to midnight) + (midnight to current start)
           restMinutes = (1440 - prevEnd) + currentStartInMinutes;
         } else {
-          // Overnight: current start - prev end (both from midnight)
           restMinutes = currentStartInMinutes - prevEnd;
         }
         hasEnoughRest = restMinutes >= 720;
       }
-      // Check rest period to next day's shift
       if (hasEnoughRest && nextDay && workerShiftHistory[worker.id]?.[nextDay]) {
         const nextTime = workerShiftHistory[worker.id][nextDay].time;
         const nextStart = getShiftStartInMinutes(nextTime);
         const isCurrentOvernight = currentEndInMinutes <= currentStartInMinutes;
         let restMinutes;
         if (!isCurrentOvernight) {
-          // Non-overnight: (current end to midnight) + (midnight to next start)
           restMinutes = (1440 - currentEndInMinutes) + nextStart;
         } else {
-          // Overnight: next start - current end (both from midnight)
           restMinutes = nextStart - currentEndInMinutes;
         }
         hasEnoughRest = restMinutes >= 720;
@@ -219,11 +216,8 @@ const allocateWorkers = async () => {
       const exceedsLimit = currentHours + shiftDurationHours > 72;
       const hasMatchingRole = worker.role.toLowerCase() === station.role.toLowerCase();
 
-      // Check if worker has less than 5 shifts assigned
       const shiftCount = workerAllocations[worker.id]?.length || 0;
       const withinShiftLimit = shiftCount < 5;
-
-      
 
       return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole && withinShiftLimit;
     });
@@ -241,16 +235,15 @@ const allocateWorkers = async () => {
       if (hasWeekendA !== hasWeekendB) {
         return hasWeekendB - hasWeekendA; // Prefer workers with weekend availability
       }
-        */
+      */
       const hoursA = workerTotalHours[a.id] || 0;
       const hoursB = workerTotalHours[b.id] || 0;
-      return hoursA - hoursB; // Lower hours worked first if availability is equal
+      return hoursA - hoursB; // Lower hours worked first
     });
 
     const bestWorker = eligibleWorkers[0];
 
     if (bestWorker) {
-      // Update tracking
       if (!workerAllocations[bestWorker.id]) workerAllocations[bestWorker.id] = [];
       if (!workerShiftHistory[bestWorker.id]) workerShiftHistory[bestWorker.id] = {};
       if (!workerTotalHours[bestWorker.id]) workerTotalHours[bestWorker.id] = 0;
@@ -274,11 +267,11 @@ const allocateWorkers = async () => {
   // Second Pass: Process unassigned stations with all workers
   const finalResults = firstPassResults.map((station) => {
     if (station.allocatedTo !== 'Unassigned') {
-      return station; // Skip already assigned stations
+      return station;
     }
 
     const shiftType = getShiftType(station.time).toLowerCase();
-    const shiftDurationHours = getShiftDurationInHours(station.time);
+    const shiftDurationHours = Number(station.hours) || getShiftDurationInHours(station.time); // Use hours column if available
     const currentStartInMinutes = getShiftStartInMinutes(station.time);
     const currentEndInMinutes = getShiftEndInMinutes(station.time);
     const day = station.day.toLowerCase();
@@ -300,7 +293,6 @@ const allocateWorkers = async () => {
       const nextDay = todayIndex < daysOfWeek.length - 1 ? daysOfWeek[todayIndex + 1] : null;
 
       let hasEnoughRest = true;
-      // Check rest period from previous day's shift
       if (prevDay && workerShiftHistory[worker.id]?.[prevDay]) {
         const prevTime = workerShiftHistory[worker.id][prevDay].time;
         const prevStart = getShiftStartInMinutes(prevTime);
@@ -308,25 +300,20 @@ const allocateWorkers = async () => {
         const isPrevOvernight = prevEnd <= prevStart;
         let restMinutes;
         if (!isPrevOvernight) {
-          // Non-overnight: (prev end to midnight) + (midnight to current start)
           restMinutes = (1440 - prevEnd) + currentStartInMinutes;
         } else {
-          // Overnight: current start - prev end (both from midnight)
           restMinutes = currentStartInMinutes - prevEnd;
         }
         hasEnoughRest = restMinutes >= 720;
       }
-      // Check rest period to next day's shift
       if (hasEnoughRest && nextDay && workerShiftHistory[worker.id]?.[nextDay]) {
         const nextTime = workerShiftHistory[worker.id][nextDay].time;
         const nextStart = getShiftStartInMinutes(nextTime);
         const isCurrentOvernight = currentEndInMinutes <= currentStartInMinutes;
         let restMinutes;
         if (!isCurrentOvernight) {
-          // Non-overnight: (current end to midnight) + (midnight to next start)
           restMinutes = (1440 - currentEndInMinutes) + nextStart;
         } else {
-          // Overnight: next start - current end (both from midnight)
           restMinutes = nextStart - currentEndInMinutes;
         }
         hasEnoughRest = restMinutes >= 720;
@@ -336,11 +323,8 @@ const allocateWorkers = async () => {
       const exceedsLimit = currentHours + shiftDurationHours > 72;
       const hasMatchingRole = worker.role.toLowerCase() === station.role.toLowerCase();
 
-      // Check if worker has less than 5 shifts assigned
       const shiftCount = workerAllocations[worker.id]?.length || 0;
       const withinShiftLimit = shiftCount < 5;
-
-      
 
       return isAvailable && canWorkAtLocation && isNotAllocatedForDay && hasEnoughRest && !exceedsLimit && hasMatchingRole && withinShiftLimit;
     });
@@ -359,13 +343,12 @@ const allocateWorkers = async () => {
       }
       const hoursA = workerTotalHours[a.id] || 0;
       const hoursB = workerTotalHours[b.id] || 0;
-      return hoursA - hoursB; // Lower hours worked first if availability is equal
+      return hoursA - hoursB; // Lower hours worked first
     });
 
     const bestWorker = eligibleWorkers[0];
 
     if (bestWorker) {
-      // Update tracking
       if (!workerAllocations[bestWorker.id]) workerAllocations[bestWorker.id] = [];
       if (!workerShiftHistory[bestWorker.id]) workerShiftHistory[bestWorker.id] = {};
       if (!workerTotalHours[bestWorker.id]) workerTotalHours[bestWorker.id] = 0;
