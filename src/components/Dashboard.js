@@ -170,6 +170,24 @@ const Dashboard = () => {
   const [contextMenuOpen, setContextMenuOpen] = useState(false); // Track if any context menu is open
   const [closeAllContextMenus, setCloseAllContextMenus] = useState(false); // Trigger to close all menus
   const [workerRoles, setWorkerRoles] = useState({}); // New state to store name-role pairs
+    // State to track if an assign/unassign action requires saving
+  const [needsSave, setNeedsSave] = useState(false);
+
+  // useEffect to trigger handleSave after unassignedStations updates
+  useEffect(() => {
+    if (needsSave) {
+      const saveAfterStateUpdate = async () => {
+        try {
+          await handleSave();
+          setNeedsSave(false); // Reset after saving
+        } catch (error) {
+          console.error('Error in auto-save:', error);
+          alert('Failed to auto-save schedule: ' + error.message);
+        }
+      };
+      saveAfterStateUpdate();
+    }
+  }, [needsSave, unassignedStations]);
 
 
   useEffect(() => {
@@ -679,6 +697,8 @@ const normalizeToARGB = (colorInput) => {
         },
       ]);
       //await handleSave();
+      // Trigger save after state updates
+      setNeedsSave(true);
     } catch (error) {
       console.error('Error unassigning shift:', error);
       alert('Failed to unassign shift: ' + error.message);
@@ -1084,7 +1104,7 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
     });
   };
   
-  const assignUnassignedStation = async (index) => {
+      const assignUnassignedStation = async (index) => {
     const station = unassignedStations[index];
     const worker = station.assignedWorker?.trim();
   
@@ -1095,55 +1115,55 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
   
     // Check if the worker exists
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-if (sessionError || !session?.user) {
-  throw new Error("User not logged in");
-}
+    if (sessionError || !session?.user) {
+      throw new Error("User not logged in");
+    }
 
-const userId = session.user.id;
+    const userId = session.user.id;
 
-// Get organization ID from profile
-const { data: profile, error: profileError } = await supabase
-  .from('profiles')
-  .select('organization_id, user_name')
-  .eq('id', userId)
-  .single();
+    // Get organization ID from profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('organization_id, user_name')
+      .eq('id', userId)
+      .single();
 
-if (profileError || !profile) {
-  throw new Error("Could not fetch user profile");
-}
+    if (profileError || !profile) {
+      throw new Error("Could not fetch user profile");
+    }
 
-const organizationId = profile.organization_id;
-const userName = profile.user_name;
-// Fetch worker names from database for the org
-const { data: workersData, error: workerError } = await supabase
-  .from('workers')
-  .select('name')
-  .eq('organization_id', organizationId);
+    const organizationId = profile.organization_id;
+    const userName = profile.user_name;
+    // Fetch worker names from database for the org
+    const { data: workersData, error: workerError } = await supabase
+      .from('workers')
+      .select('name')
+      .eq('organization_id', organizationId);
 
-if (workerError || !workersData) {
-  throw new Error("Error fetching workers from database");
-}
+    if (workerError || !workersData) {
+      throw new Error("Error fetching workers from database");
+    }
 
-// Validate worker existence (case-insensitive)
-const workerExists = workersData.some(
-  (w) => w.name.toLowerCase() === worker.toLowerCase()
-);
+    // Validate worker existence (case-insensitive)
+    const workerExists = workersData.some(
+      (w) => w.name.toLowerCase() === worker.toLowerCase()
+    );
 
-if (!workerExists) {
-  alert(`⚠️ Worker "${worker}" does not exist. Please enter a valid worker name.`);
-  return;
-}
-// Check if worker already has a shift on this day
-  if (schedule[worker]?.[station.day].location != 'Unassigned') {
-    alert(
-  `⚠️ Worker "${worker}" already has a shift assigned on ${station.day} at ${schedule[worker][station.day].location} (${schedule[worker][station.day].time}).`
-);
-    return;
-  }
-// Capture current values before update
-const oldAssignment = schedule[worker]?.[station.day] || {};
-const oldLocation = oldAssignment.location || null;
-const oldTime = oldAssignment.time || null;
+    if (!workerExists) {
+      alert(`Warning: Worker "${worker}" does not exist. Please enter a valid worker name.`);
+      return;
+    }
+    // Check if worker already has a shift on this day
+    if (schedule[worker]?.[station.day].location != 'Unassigned') {
+      alert(
+        `Warning: Worker "${worker}" already has a shift assigned on ${station.day} at ${schedule[worker][station.day].location} (${schedule[worker][station.day].time}).`
+      );
+      return;
+    }
+    // Capture current values before update
+    const oldAssignment = schedule[worker]?.[station.day] || {};
+    const oldLocation = oldAssignment.location || null;
+    const oldTime = oldAssignment.time || null;
   
     setSchedule((prevSchedule) => {
       const updatedSchedule = { ...prevSchedule };
@@ -1156,6 +1176,7 @@ const oldTime = oldAssignment.time || null;
         location: station.location,
         time: station.time,
         date: station.date || '',
+        role: station.role || workerRoles[worker] || '', // Preserve role
       };
   
       return updatedSchedule;
@@ -1163,26 +1184,90 @@ const oldTime = oldAssignment.time || null;
   
     setUnassignedStations((prev) => prev.filter((_, i) => i !== index));
   
-    handleSave(); // Save after assigning
-    const { error: auditError } = await supabase
-    .from('schedule_audit')
-    .insert([{
-      organization_id: organizationId,
-      worker_name: worker,
-      day_of_week: station.day,
-      old_location: oldLocation,
-      new_location: station.location,
-      old_time: oldTime,
-      new_time: station.time,
-      changed_by: userName,
-      week_ending: weekEndingDate,
-    }]);
+    // Use audit buffer instead of direct insert
+    setAuditLogBuffer((prevLog) => [
+      ...prevLog,
+      {
+        worker_name: worker,
+        day_of_week: station.day,
+        field: 'location',
+        old_value: oldLocation,
+        new_value: station.location,
+      },
+      {
+        worker_name: worker,
+        day_of_week: station.day,
+        field: 'time',
+        old_value: oldTime,
+        new_value: station.time,
+      },
+    ]);
 
-  if (auditError) {
-    console.error('Failed to insert audit log:', auditError.message);
-  }
+    // Trigger auto-save only when unassignedStations changes
+    setNeedsSave(true);
   };
   
+    // Delete an unassigned shift
+  const handleDeleteUnassigned = async (index) => {
+    if (isScheduleLocked) {
+      alert('Schedule is locked and cannot be modified.');
+      return;
+    }
+
+    const station = unassignedStations[index];
+
+    // Confirm deletion
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this unassigned shift?\n\nLocation: ${station.location}\nTime: ${station.time}\nDay: ${station.day}`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session?.user) {
+        throw new Error("User not logged in");
+      }
+
+      const userId = session.user.id;
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('organization_id, user_name')
+        .eq('id', userId)
+        .single();
+
+      if (profileError || !profile) {
+        throw new Error("Could not fetch user profile");
+      }
+
+      const organizationId = profile.organization_id;
+      const userName = profile.user_name;
+
+      // Remove from state
+      setUnassignedStations((prev) => prev.filter((_, i) => i !== index));
+
+      // Add audit log entry
+      setAuditLogBuffer((prevLog) => [
+        ...prevLog,
+        {
+          worker_name: null,
+          day_of_week: station.day,
+          field: 'unassigned_shift',
+          old_value: `${station.location} - ${station.time}`,
+          new_value: 'Deleted',
+        },
+      ]);
+
+      // Trigger auto-save (will delete from DB in handleSave)
+      setNeedsSave(true);
+
+      // Optional: Show success
+      setSuccessMessage('Unassigned shift deleted.');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (error) {
+      console.error('Error deleting unassigned shift:', error);
+      alert('Failed to delete unassigned shift: ' + error.message);
+    }
+  };
   
 
   const handleChange = (worker, day, field, newValue) => {
@@ -1240,27 +1325,33 @@ const oldTime = oldAssignment.time || null;
   
 
   const handleSave = async () => {
-    try {
-      const weekEndingDate = datesOfWeek['Saturday'];
-      if (!weekEndingDate) {
-        alert('Week ending date is missing');
-        return;
-      }
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session?.user) return;
-  
+  try {
+    const weekEndingDate = datesOfWeek['Saturday'];
+    if (!weekEndingDate) {
+      alert('Week ending date is missing');
+      return;
+    }
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session?.user) {
+      alert('User not logged in');
+      return;
+    }
+
     const userId = session.user.id;
-  
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id, user_name')
       .eq('id', userId)
       .single();
-  
-    if (profileError || !profile) return;
-  
+
+    if (profileError || !profile) {
+      alert('Could not fetch user profile');
+      return;
+    }
+
     const organizationId = profile.organization_id;
     const userName = profile.user_name;
+
     // Step 1: Check if any schedule entries exist for the given weekEndingDate
     const { data: existingSchedule, error: fetchError } = await supabase
       .from('schedule_entries')
@@ -1269,44 +1360,82 @@ const oldTime = oldAssignment.time || null;
 
     if (fetchError) {
       console.error('Error fetching schedule entries:', fetchError);
+      alert('Failed to fetch schedule entries');
       return;
     }
 
     // Step 2: If no records exist, insert an audit log with "Schedule Created"
     if (existingSchedule.length === 0) {
-      const { data: auditData, error: auditError } = await supabase
+      const { error: auditError } = await supabase
         .from('schedule_audit')
         .insert([{
-          organization_id: organizationId,  // You need to retrieve this from user session or context
+          organization_id: organizationId,
           worker_name: null,
           day_of_week: null,
           old_location: null,
           old_time: null,
           new_location: null,
           new_time: null,
-          changed_by: userName,  
+          changed_by: userName,
           week_ending: weekEndingDate,
           comments: 'Schedule Created',
         }]);
 
       if (auditError) {
         console.error('Error inserting audit log:', auditError);
+        alert('Failed to insert audit log');
         return;
       }
+    }
 
-      console.log('Audit log inserted successfully:', auditData);
+    // Step 3: Delete all existing unassigned shifts for the week
+    const { error: deleteUnassignedError } = await supabase
+      .from('unassigned_shifts')
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('week_ending', weekEndingDate);
+
+    if (deleteUnassignedError) {
+      console.error('Error deleting unassigned shifts:', deleteUnassignedError);
+      alert('Failed to delete unassigned shifts');
+      return;
     }
-      await upsertSchedule(schedule, weekEndingDate);
-      await saveAuditLog(weekEndingDate);
-  
-      setSuccessMessage('Schedule saved successfully!');
-      setAuditLogBuffer([]); // Clear the buffer
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to save schedule: ' + err.message);
+
+    // Step 4: Insert current unassignedStations into unassigned_shifts table
+    if (unassignedStations.length > 0) {
+      const unassignedShifts = unassignedStations.map((station) => ({
+        organization_id: organizationId,
+        day_of_week: station.day,
+        location: station.location,
+        time: station.time,
+        date: station.date || datesOfWeek[station.day] || null,
+        role: station.role || '',
+        week_ending: weekEndingDate,
+      }));
+
+      const { error: insertUnassignedError } = await supabase
+        .from('unassigned_shifts')
+        .insert(unassignedShifts);
+
+      if (insertUnassignedError) {
+        console.error('Error inserting unassigned shifts:', insertUnassignedError);
+        alert('Failed to insert unassigned shifts');
+        return;
+      }
     }
-  };
+
+    // Step 5: Save the schedule
+    await upsertSchedule(schedule, weekEndingDate);
+    await saveAuditLog(weekEndingDate);
+
+    setSuccessMessage('Schedule saved successfully!');
+    setAuditLogBuffer([]); // Clear the buffer
+    setTimeout(() => setSuccessMessage(''), 3000);
+  } catch (err) {
+    console.error('Error saving schedule:', err);
+    alert('Failed to save schedule: ' + err.message);
+  }
+};
   const saveAuditLog = async (weekEndingDate) => {
     if (auditLogBuffer.length === 0) return;
   
@@ -1545,6 +1674,30 @@ setUnassignedStations(unassigned);
       }
       isLocked = is_locked; // Set lock state (assumes all rows for week_ending have same is_locked)
     }
+
+    // Fetch unassigned shifts
+    const { data: unassignedRows, error: unassignedError } = await supabase
+      .from('unassigned_shifts')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('week_ending', weekEndingDate);
+
+    if (unassignedError) {
+      console.error('Error fetching unassigned shifts:', unassignedError);
+      return null;
+    }
+
+    // Set unassigned shifts
+    const unassignedShifts = unassignedRows.map((row) => ({
+      day: row.day_of_week,
+      location: row.location,
+      time: row.time,
+      date: row.date || '',
+      role: row.role || '',
+      assignedWorker: '',
+    }));
+    setUnassignedStations(unassignedShifts);
+
     const weekEndingDated = new Date(weekEndingDate);
 
     if (!(weekEndingDated instanceof Date) || isNaN(weekEndingDated)) {
@@ -1575,7 +1728,7 @@ setUnassignedStations(unassigned);
     setIsScheduleLocked(isLocked); // Set the lock state
 
     return { schedule, datesOfWeek };
-  };
+};
 
   const deleteSchedule = async (weekEndingDate) => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -1611,6 +1764,19 @@ setUnassignedStations(unassigned);
       console.error('Error deleting schedule:', deleteError);
       return { success: false, message: 'Failed to delete schedule.' };
     }
+    
+    // Delete unassigned shifts for the specific week
+    const { error: deleteUnassignedError } = await supabase
+      .from('unassigned_shifts')
+      .delete()
+      .eq('organization_id', organizationId)
+      .eq('week_ending', weekEndingDate);
+
+    if (deleteUnassignedError) {
+      console.error('Error deleting unassigned shifts:', deleteUnassignedError);
+      return { success: false, message: 'Failed to delete unassigned shifts.' };
+    }
+
     const auditLog = {
       organization_id: organizationId,
       worker_name: null,  // Since it's a full schedule deletion, no specific worker
@@ -1621,7 +1787,7 @@ setUnassignedStations(unassigned);
       new_time: null,  // No new time, since it's a deletion
       changed_by: userName,  // Use the user's email or username for "changed_by"
       week_ending: weekEndingDate,
-      comments: 'Schedule Deleted',
+      comments: 'Schedule and unassigned shifts deleted',
     };
   
     // Insert the audit log record into the schedule_audit table
@@ -1636,7 +1802,7 @@ setUnassignedStations(unassigned);
   
     // Return a success message
     return { success: true, message: 'Schedule deleted successfully.' };
-  };
+};
   const handleDragEnd = async (event) => {
     if (isScheduleLocked) {
     alert('Schedule is locked and cannot be modified.');
@@ -2070,6 +2236,12 @@ setUnassignedStations(unassigned);
           <td>
             <button onClick={() => assignUnassignedStation(index)} disabled={isScheduleLocked}>
               Assign
+            </button>
+            <button 
+              onClick={() => handleDeleteUnassigned(index)} 
+              disabled={isScheduleLocked}
+            >
+              Delete
             </button>
           </td>
         </tr>

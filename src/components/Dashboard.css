@@ -233,6 +233,7 @@ button:active {
   border: none;
   border-radius: 4px;
   cursor: pointer;
+  margin: 3px;
 }
 
 .unassigned-table button:hover {
