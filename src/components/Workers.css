@@ -1,108 +1,194 @@
 .workers-container {
-    width: 80%;
-    margin: 0 auto;
-    padding: 20px;
-    background-color: #f9f9f9;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    
-  }
-/* Modal overlay to cover the entire screen */
+  width: 80%;
+  margin: 0 auto;
+  padding: 20px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Modal overlay */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000; /* Make sure it's on top */
+  z-index: 1000;
 }
 
 .modal-content {
   background-color: white;
   padding: 20px;
   border-radius: 8px;
-  width: 90vw; /* Use percentage of the viewport width */
-  max-width: 600px; /* Limit the width */
-  max-height: 90vh; /* Limit the height */
+  width: 90vw;
+  max-width: 600px;
+  max-height: 90vh;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   position: relative;
-  overflow: auto; /* Allow scrolling if content overflows */
-  box-sizing: border-box; /* Ensure padding is included in the width/height calculation */
+  overflow: auto;
+  box-sizing: border-box;
 }
 
-  
-  /* Style for the table */
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 20px;
-  }
-  
-  th, td {
-    padding: 10px;
-    text-align: left;
-    border: 1px solid #ddd;
-  }
-  
-  th {
-    background-color: #f4f4f4;
-  }
-  
-  /* Input fields inside the modal */
-  input {
-    width: 100%;
-    padding: 8px;
-    margin-bottom: 10px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-  }
-  
-  /* Buttons inside the modal */
-  button {
-    padding: 8px 12px;
-    border: none;
-    background-color: #007BFF;
-    color: white;
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  
-  button:hover {
-    background-color: #0056b3;
-  }
-  
-  /* Optional: Style for Cancel button */
-  button:nth-child(2) {
-    background-color: #f44336;
-  }
-  
-  button:nth-child(2):hover {
-    background-color: #d32f2f;
-  }
-  
-  /* Styling for clickable rows */
-  .clickable-row {
-    cursor: pointer;
-  }
-  
-  .clickable-row:hover {
-    background-color: #f0f0f0;
-    transition: background-color 0.3s ease;
-  }
-  .sticky-header {
-    position: sticky;
-    top: 0;
-    background-color: #f9f9f9; /* Match your .workers-container */
-    padding-top: 10px;
-    padding-bottom: 10px;
-    z-index: 10;
-  }
-  
- /* Add to Workers.css */
+/* Wrapper for table */
+.table-wrapper {
+  width: 100%;
+  max-width: 200px; /* Match approximate width of "Add New Worker" button */
+  margin: 0 auto; /* Center the table under the button */
+  overflow-x: auto; /* Allow scrolling on small screens */
+}
+
+/* Style for the table */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+th,
+td {
+  padding: 6px; /* Reduced padding for compact fit */
+  text-align: left;
+  border: 1px solid #ddd;
+  font-size: 12px; /* Smaller font to fit narrow table */
+}
+
+/* Allow wrapping for text-heavy columns */
+th:nth-child(1),
+td:nth-child(1),
+th:nth-child(9),
+td:nth-child(9),
+th:nth-child(11),
+td:nth-child(11) {
+  white-space: normal; /* Allow wrapping for Name, Can Work Stations, Special Requirements */
+}
+
+/* Keep day columns and Actions compact */
+th:nth-child(2),
+td:nth-child(2),
+th:nth-child(3),
+td:nth-child(3),
+th:nth-child(4),
+td:nth-child(4),
+th:nth-child(5),
+td:nth-child(5),
+th:nth-child(6),
+td:nth-child(6),
+th:nth-child(7),
+td:nth-child(7),
+th:nth-child(8),
+td:nth-child(8),
+th:nth-child(12),
+td:nth-child(12) {
+  white-space: nowrap; /* Prevent wrapping for days and Actions */
+}
+
+/* Column widths */
+th:nth-child(1),
+td:nth-child(1) {
+  width: 15%; /* Name */
+}
+th:nth-child(2),
+td:nth-child(2),
+th:nth-child(3),
+td:nth-child(3),
+th:nth-child(4),
+td:nth-child(4),
+th:nth-child(5),
+td:nth-child(5),
+th:nth-child(6),
+td:nth-child(6),
+th:nth-child(7),
+td:nth-child(7),
+th:nth-child(8),
+td:nth-child(8) {
+  width: 6%; /* Days (Sunday–Saturday) */
+}
+th:nth-child(9),
+td:nth-child(9) {
+  width: 15%; /* Can Work Stations */
+}
+th:nth-child(10),
+td:nth-child(10) {
+  width: 12%; /* Role */
+}
+th:nth-child(11),
+td:nth-child(11) {
+  width: 15%; /* Special Requirements */
+}
+th:nth-child(12),
+td:nth-child(12) {
+  width: 10%; /* Actions */
+}
+
+th {
+  background-color: #f4f4f4;
+}
+
+/* Input fields in modal */
+input {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+
+/* Buttons */
+button {
+  padding: 8px 12px;
+  border: none;
+  background-color: #007bff;
+  color: white;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+button:hover {
+  background-color: #0056b3;
+}
+
+/* Cancel button */
+button:nth-child(2) {
+  background-color: #f44336;
+}
+
+button:nth-child(2):hover {
+  background-color: #d32f2f;
+}
+
+/* Add New Worker button */
+button.mb-4 {
+  display: block; /* Ensure button is block-level for consistent width */
+  margin: 0 auto 10px; /* Center button and add bottom margin */
+}
+
+/* Clickable rows */
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover {
+  background-color: #f0f0f0;
+  transition: background-color 0.3s ease;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  background-color: #f9f9f9;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  z-index: 10;
+  text-align: center; /* Center the header content */
+}
+
+/* Select dropdown styling */
 select {
   width: 100%;
   padding: 8px;
@@ -112,10 +198,11 @@ select {
   background-color: white;
   font-size: 16px;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 select:focus {
   outline: none;
-  border-color: #007BFF;
+  border-color: #007bff;
   box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
 }

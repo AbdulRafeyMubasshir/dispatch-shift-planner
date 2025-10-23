@@ -9,7 +9,6 @@ const Workers = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [workerToDelete, setWorkerToDelete] = useState(null);
   const [organizationId, setOrganizationId] = useState(null);
-  
 
   // Fetch organization_id of logged-in user
   useEffect(() => {
@@ -65,10 +64,10 @@ const Workers = () => {
       canworkstations: Array.isArray(worker.canworkstations)
         ? worker.canworkstations.join(', ')
         : '', // fallback in case it's null/undefined
+      special_requirements: worker.special_requirements || '', // Initialize special_requirements
     });
     setShowModal(true);
   };
-  
 
   const handleModalInputChange = (field, value) => {
     setSelectedWorker((prev) => ({
@@ -78,30 +77,29 @@ const Workers = () => {
         : value,
     }));
   };
-  
-  
 
   const handleSaveModal = async () => {
     // Trim the name field to remove leading/trailing spaces
-  const trimmedName = selectedWorker.name.trim();
+    const trimmedName = selectedWorker.name.trim();
 
     // Convert canworkstations string to array before saving
     const updatedWorker = {
       ...selectedWorker,
-      name: trimmedName, // Use trimmed name
+      name: trimmedName,
       canworkstations: selectedWorker.canworkstations
         .split(',')
         .map((item) => item.trim())
         .filter((item) => item !== ''),
+      special_requirements: selectedWorker.special_requirements || '', // Include special_requirements
     };
-  
+
     if (updatedWorker.id) {
       // Update existing worker
       const { data, error } = await supabase
         .from('workers')
         .update({
           name: updatedWorker.name,
-          canworkstations: updatedWorker.canworkstations, // Save array form
+          canworkstations: updatedWorker.canworkstations,
           monday: updatedWorker.monday,
           tuesday: updatedWorker.tuesday,
           wednesday: updatedWorker.wednesday,
@@ -113,10 +111,11 @@ const Workers = () => {
           email: updatedWorker.email,
           mobile_number: updatedWorker.mobile_number,
           payroll_number: updatedWorker.payroll_number,
+          special_requirements: updatedWorker.special_requirements, // Save special_requirements
         })
         .eq('id', updatedWorker.id)
         .select();
-  
+
       if (error) {
         console.error('Error updating worker:', error);
       } else {
@@ -132,20 +131,18 @@ const Workers = () => {
         .from('workers')
         .insert([{ ...updatedWorker, organization_id: organizationId }])
         .select();
-  
+
       if (error) {
         console.error('Error saving new worker:', error);
       } else {
         setWorkers((prevWorkers) => [...prevWorkers, data[0]]);
       }
     }
-  
+
     // Close modal and reset selected worker
     setShowModal(false);
     setSelectedWorker(null);
   };
-  
-  
 
   const handleDeleteWorker = async () => {
     const { error } = await supabase
@@ -178,6 +175,11 @@ const Workers = () => {
       friday: '',
       saturday: '',
       sunday: '',
+      role: '',
+      email: '',
+      mobile_number: '',
+      payroll_number: '',
+      special_requirements: '', // Initialize special_requirements
     });
     setShowModal(true);
   };
@@ -195,15 +197,14 @@ const Workers = () => {
   return (
     <div className="workers-container">
       <div className="sticky-header">
-  <h1>Workers</h1>
-  <button
-    onClick={handleAddWorker}
-    className="mb-4 px-4 py-2 bg-green-500 text-white rounded"
-  >
-    Add New Worker
-  </button>
-</div>
-
+        <h1>Workers</h1>
+        <button
+          onClick={handleAddWorker}
+          className="mb-4 px-4 py-2 bg-green-500 text-white rounded"
+        >
+          Add New Worker
+        </button>
+      </div>
 
       {workers.length === 0 && <p>No data loaded</p>}
 
@@ -220,6 +221,7 @@ const Workers = () => {
             <th>Saturday</th>
             <th>Can Work Stations</th>
             <th>Role</th>
+            <th>Special Requirements</th> {/* New column header */}
             <th>Actions</th>
           </tr>
         </thead>
@@ -240,6 +242,7 @@ const Workers = () => {
               <td>{worker.saturday}</td>
               <td>{worker.canworkstations?.join(', ')}</td>
               <td>{worker.role}</td>
+              <td>{worker.special_requirements || ''}</td> {/* Display special_requirements */}
               <td>
                 <button
                   onClick={(e) => {
@@ -297,68 +300,71 @@ const Workers = () => {
               <label key={day}>
                 {day.charAt(0).toUpperCase() + day.slice(1)}:
                 <select
-            value={selectedWorker[day] || ''}
-            onChange={(e) => handleModalInputChange(day, e.target.value)}
-          >
-            <option value="">Select</option>
-            <option value="Early">Early</option>
-            <option value="Late">Late</option>
-            <option value="Night">Night</option>
-            <option value="Early/Late">Early or Late</option>
-            <option value="Early/Night">Early or Night</option>
-            <option value="Late/Night">Late or Night</option>
-            <option value="Any">Any</option>
-            <option value="N/A">N/A</option>
-            <option value="AL">AL</option>
-            <option value="Rest Day">Rest Day</option>
-          </select>
+                  value={selectedWorker[day] || ''}
+                  onChange={(e) => handleModalInputChange(day, e.target.value)}
+                >
+                  <option value="">Select</option>
+                  <option value="Early">Early</option>
+                  <option value="Late">Late</option>
+                  <option value="Night">Night</option>
+                  <option value="Early/Late">Early or Late</option>
+                  <option value="Early/Night">Early or Night</option>
+                  <option value="Late/Night">Late or Night</option>
+                  <option value="Any">Any</option>
+                  <option value="N/A">N/A</option>
+                  <option value="AL">AL</option>
+                  <option value="Rest Day">Rest Day</option>
+                </select>
               </label>
             ))}
             <label>
-  Can Work Stations:
-  <input
-    type="text"
-    value={selectedWorker.canworkstations}  // Now using the string form (not an array)
-    onChange={(e) => handleModalInputChange('canworkstations', e.target.value)}  // Directly handle string input
-  />
-</label>
-<label>
-        Role:
-        <input
-          type="text"
-          value={selectedWorker.role || ''}
-          onChange={(e) => handleModalInputChange('role', e.target.value)}
-        />
-      </label>
-
-      {/* New Fields to be displayed */}
-      <label>
-        Email:
-        <input
-          type="email"
-          value={selectedWorker.email || ''}
-          onChange={(e) => handleModalInputChange('email', e.target.value)}
-        />
-      </label>
-
-      <label>
-        Mobile Number:
-        <input
-          type="text"
-          value={selectedWorker.mobile_number || ''}
-          onChange={(e) => handleModalInputChange('mobile_number', e.target.value)}
-        />
-      </label>
-
-      <label>
-        Payroll Number:
-        <input
-          type="text"
-          value={selectedWorker.payroll_number || ''}
-          onChange={(e) => handleModalInputChange('payroll_number', e.target.value)}
-        />
-      </label>
-
+              Can Work Stations:
+              <input
+                type="text"
+                value={selectedWorker.canworkstations}  // Now using the string form (not an array)
+                onChange={(e) => handleModalInputChange('canworkstations', e.target.value)}  // Directly handle string input
+              />
+            </label>
+            <label>
+              Role:
+              <input
+                type="text"
+                value={selectedWorker.role || ''}
+                onChange={(e) => handleModalInputChange('role', e.target.value)}
+              />
+            </label>
+            <label>
+              Email:
+              <input
+                type="email"
+                value={selectedWorker.email || ''}
+                onChange={(e) => handleModalInputChange('email', e.target.value)}
+              />
+            </label>
+            <label>
+              Mobile Number:
+              <input
+                type="text"
+                value={selectedWorker.mobile_number || ''}
+                onChange={(e) => handleModalInputChange('mobile_number', e.target.value)}
+              />
+            </label>
+            <label>
+              Payroll Number:
+              <input
+                type="text"
+                value={selectedWorker.payroll_number || ''}
+                onChange={(e) => handleModalInputChange('payroll_number', e.target.value)}
+              />
+            </label>
+            <label>
+              Special Requirements:
+              <input
+                type="text"
+                value={selectedWorker.special_requirements || ''}
+                onChange={(e) => handleModalInputChange('special_requirements', e.target.value)}
+              />
+            </label>
             <div className="modal-buttons">
               <button onClick={handleSaveModal} className="bg-blue-500 text-white px-4 py-2 rounded">Save</button>
               <button onClick={handleCloseModal} className="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
