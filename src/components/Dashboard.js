@@ -1105,23 +1105,27 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
   };
   
       const assignUnassignedStation = async (index) => {
-    const station = unassignedStations[index];
-    const worker = station.assignedWorker?.trim();
-  
-    if (!worker) {
-      alert('Please enter a valid worker name.');
-      return;
-    }
-  
+  if (isScheduleLocked) {
+    alert('Schedule is locked and cannot be modified.');
+    return;
+  }
+
+  const station = unassignedStations[index];
+  const worker = station.assignedWorker?.trim();
+
+  if (!worker) {
+    alert('Please enter a valid worker name.');
+    return;
+  }
+
+  try {
     // Check if the worker exists
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !session?.user) {
-      throw new Error("User not logged in");
+      throw new Error('User not logged in');
     }
 
     const userId = session.user.id;
-
-    // Get organization ID from profile
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id, user_name')
@@ -1129,11 +1133,12 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
       .single();
 
     if (profileError || !profile) {
-      throw new Error("Could not fetch user profile");
+      throw new Error('Could not fetch user profile');
     }
 
     const organizationId = profile.organization_id;
     const userName = profile.user_name;
+
     // Fetch worker names from database for the org
     const { data: workersData, error: workerError } = await supabase
       .from('workers')
@@ -1141,7 +1146,7 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
       .eq('organization_id', organizationId);
 
     if (workerError || !workersData) {
-      throw new Error("Error fetching workers from database");
+      throw new Error('Error fetching workers from database');
     }
 
     // Validate worker existence (case-insensitive)
@@ -1153,37 +1158,123 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
       alert(`Warning: Worker "${worker}" does not exist. Please enter a valid worker name.`);
       return;
     }
-    // Check if worker already has a shift on this day
-    if (schedule[worker]?.[station.day].location != 'Unassigned') {
+
+    // Define non-working statuses
+    const nonWorkingStatuses = ['AL', 'N/A', 'REST DAY'];
+
+    // Check if worker already has a shift or non-working status on this day
+    const currentDayAssignment = schedule[worker]?.[station.day];
+    if (currentDayAssignment) {
+      if (nonWorkingStatuses.includes(currentDayAssignment.time)) {
+        alert(
+          `Cannot assign shift to ${worker} on ${station.day}: Worker is marked as ${currentDayAssignment.time}.`
+        );
+        return;
+      }
+      if (currentDayAssignment.location !== 'Unassigned') {
+        alert(
+          `Warning: Worker "${worker}" already has a shift assigned on ${station.day} at ${currentDayAssignment.location} (${currentDayAssignment.time}).`
+        );
+        return;
+      }
+    }
+
+    // Function to check 12-hour rest period for a worker on a specific day
+    const checkRestPeriod = (worker, day, newTime, schedule) => {
+      const daysIndex = daysOfWeek.indexOf(day);
+      const prevDay = daysIndex > 0 ? daysOfWeek[daysIndex - 1] : null;
+      const nextDay = daysIndex < daysOfWeek.length - 1 ? daysOfWeek[daysIndex + 1] : null;
+      let hasEnoughRest = true;
+
+      // Skip if newTime is empty or non-working
+      if (!newTime || !newTime.includes('-') || nonWorkingStatuses.includes(newTime)) {
+        return true; // No shift assigned or non-working day, so rest period check passes
+      }
+
+      const currentStartInMinutes = getShiftStartInMinutes(newTime);
+      const currentEndInMinutes = getShiftEndInMinutes(newTime);
+
+      // Check rest period from previous day's shift
+      if (prevDay && schedule[worker]?.[prevDay]?.time) {
+        const prevTime = schedule[worker][prevDay].time;
+        // Skip if previous day is non-working
+        if (!nonWorkingStatuses.includes(prevTime)) {
+          const prevStart = getShiftStartInMinutes(prevTime);
+          const prevEnd = getShiftEndInMinutes(prevTime);
+          const isPrevOvernight = prevEnd <= prevStart;
+          let restMinutes;
+          if (!isPrevOvernight) {
+            // Non-overnight: (prev end to midnight) + (midnight to current start)
+            restMinutes = (1440 - prevEnd) + currentStartInMinutes;
+          } else {
+            // Overnight: current start - prev end (both from midnight)
+            restMinutes = currentStartInMinutes - prevEnd;
+          }
+          if (restMinutes < 720) {
+            hasEnoughRest = false;
+          }
+        }
+      }
+
+      // Check rest period to next day's shift
+      if (hasEnoughRest && nextDay && schedule[worker]?.[nextDay]?.time) {
+        const nextTime = schedule[worker][nextDay].time;
+        // Skip if next day is non-working
+        if (!nonWorkingStatuses.includes(nextTime)) {
+          const nextStart = getShiftStartInMinutes(nextTime);
+          const isCurrentOvernight = currentEndInMinutes <= currentStartInMinutes;
+          let restMinutes;
+          if (!isCurrentOvernight) {
+            // Non-overnight: (current end to midnight) + (midnight to next start)
+            restMinutes = (1440 - currentEndInMinutes) + nextStart;
+          } else {
+            // Overnight: next start - current end (both from midnight)
+            restMinutes = nextStart - currentEndInMinutes;
+          }
+          if (restMinutes < 720) {
+            hasEnoughRest = false;
+          }
+        }
+      }
+
+      return hasEnoughRest;
+    };
+
+    // Check rest period for the worker on the target day
+    const isRestPeriodValid = checkRestPeriod(worker, station.day, station.time, schedule);
+
+    if (!isRestPeriodValid) {
       alert(
-        `Warning: Worker "${worker}" already has a shift assigned on ${station.day} at ${schedule[worker][station.day].location} (${schedule[worker][station.day].time}).`
+        `Cannot assign shift to ${worker} on ${station.day}: It would violate the 12-hour rest period rule.`
       );
       return;
     }
+
     // Capture current values before update
     const oldAssignment = schedule[worker]?.[station.day] || {};
     const oldLocation = oldAssignment.location || null;
     const oldTime = oldAssignment.time || null;
-  
+
+    // Proceed with assignment
     setSchedule((prevSchedule) => {
       const updatedSchedule = { ...prevSchedule };
-  
+
       if (!updatedSchedule[worker]) {
         updatedSchedule[worker] = {};
       }
-  
+
       updatedSchedule[worker][station.day] = {
         location: station.location,
         time: station.time,
         date: station.date || '',
-        role: station.role || workerRoles[worker] || '', // Preserve role
+        role: station.role || workerRoles[worker] || '',
       };
-  
+
       return updatedSchedule;
     });
-  
+
     setUnassignedStations((prev) => prev.filter((_, i) => i !== index));
-  
+
     // Use audit buffer instead of direct insert
     setAuditLogBuffer((prevLog) => [
       ...prevLog,
@@ -1203,9 +1294,13 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
       },
     ]);
 
-    // Trigger auto-save only when unassignedStations changes
+    // Trigger auto-save
     setNeedsSave(true);
-  };
+  } catch (error) {
+    console.error('Error assigning unassigned shift:', error);
+    alert('Failed to assign shift: ' + error.message);
+  }
+};
   
     // Delete an unassigned shift
   const handleDeleteUnassigned = async (index) => {
@@ -1803,12 +1898,29 @@ setUnassignedStations(unassigned);
     // Return a success message
     return { success: true, message: 'Schedule deleted successfully.' };
 };
+
+// Utility functions to parse time ranges
+const getShiftStartInMinutes = (timeRange) => {
+  if (!timeRange || !timeRange.includes('-')) return 0;
+  const [start] = timeRange.split('-');
+  const hours = parseInt(start.slice(0, 2), 10);
+  const minutes = parseInt(start.slice(2), 10);
+  return hours * 60 + minutes;
+};
+
+const getShiftEndInMinutes = (timeRange) => {
+  if (!timeRange || !timeRange.includes('-')) return 0;
+  const [, end] = timeRange.split('-');
+  const hours = parseInt(end.slice(0, 2), 10);
+  const minutes = parseInt(end.slice(2), 10);
+  return hours * 60 + minutes;
+};
+
   const handleDragEnd = async (event) => {
-    if (isScheduleLocked) {
+  if (isScheduleLocked) {
     alert('Schedule is locked and cannot be modified.');
     return;
   }
-  console.log('Drag end event:', event);
   const { active, over } = event;
 
   if (!over || active.id === over.id) {
@@ -1816,7 +1928,6 @@ setUnassignedStations(unassigned);
     return;
   }
 
-  
   try {
     const [sourceWorker, sourceDay] = active.id.split('-');
     const [destWorker, destDay] = over.id.split('-');
@@ -1843,72 +1954,156 @@ setUnassignedStations(unassigned);
     const organizationId = profile.organization_id;
     const userName = profile.user_name;
 
+    // Get the assignments to be swapped
+    const sourceAssignment = { ...schedule[sourceWorker][sourceDay] };
+    const destAssignment = { ...schedule[destWorker][destDay] };
+
+    // Define non-working statuses
+    const nonWorkingStatuses = ['AL', 'N/A', 'REST DAY'];
+
+    // Check if either destination day is a non-working day
+    if (nonWorkingStatuses.includes(destAssignment.time)) {
+      alert(`Cannot assign shift to ${destWorker} on ${destDay}: Worker is marked as ${destAssignment.time}.`);
+      return;
+    }
+    if (nonWorkingStatuses.includes(sourceAssignment.time)) {
+      alert(`Cannot assign shift to ${destWorker} on ${sourceDay}: Worker is marked as ${sourceAssignment.time}.`);
+      return;
+    }
+
+    // Function to check 12-hour rest period for a worker on a specific day
+    const checkRestPeriod = (worker, day, newTime, schedule) => {
+      const daysIndex = daysOfWeek.indexOf(day);
+      const prevDay = daysIndex > 0 ? daysOfWeek[daysIndex - 1] : null;
+      const nextDay = daysIndex < daysOfWeek.length - 1 ? daysOfWeek[daysIndex + 1] : null;
+      let hasEnoughRest = true;
+
+      // Skip if newTime is empty or non-working
+      if (!newTime || !newTime.includes('-') || nonWorkingStatuses.includes(newTime)) {
+        return true; // No shift assigned or non-working day, so rest period check passes
+      }
+
+      const currentStartInMinutes = getShiftStartInMinutes(newTime);
+      const currentEndInMinutes = getShiftEndInMinutes(newTime);
+
+      // Check rest period from previous day's shift
+      if (prevDay && schedule[worker]?.[prevDay]?.time) {
+        const prevTime = schedule[worker][prevDay].time;
+        // Skip if previous day is non-working
+        if (!nonWorkingStatuses.includes(prevTime)) {
+          const prevStart = getShiftStartInMinutes(prevTime);
+          const prevEnd = getShiftEndInMinutes(prevTime);
+          const isPrevOvernight = prevEnd <= prevStart;
+          let restMinutes;
+          if (!isPrevOvernight) {
+            // Non-overnight: (prev end to midnight) + (midnight to current start)
+            restMinutes = (1440 - prevEnd) + currentStartInMinutes;
+          } else {
+            // Overnight: current start - prev end (both from midnight)
+            restMinutes = currentStartInMinutes - prevEnd;
+          }
+          if (restMinutes < 720) {
+            hasEnoughRest = false;
+          }
+        }
+      }
+
+      // Check rest period to next day's shift
+      if (hasEnoughRest && nextDay && schedule[worker]?.[nextDay]?.time) {
+        const nextTime = schedule[worker][nextDay].time;
+        // Skip if next day is non-working
+        if (!nonWorkingStatuses.includes(nextTime)) {
+          const nextStart = getShiftStartInMinutes(nextTime);
+          const isCurrentOvernight = currentEndInMinutes <= currentStartInMinutes;
+          let restMinutes;
+          if (!isCurrentOvernight) {
+            // Non-overnight: (current end to midnight) + (midnight to next start)
+            restMinutes = (1440 - currentEndInMinutes) + nextStart;
+          } else {
+            // Overnight: next start - current end (both from midnight)
+            restMinutes = nextStart - currentEndInMinutes;
+          }
+          if (restMinutes < 720) {
+            hasEnoughRest = false;
+          }
+        }
+      }
+
+      return hasEnoughRest;
+    };
+
+    // Simulate the swap to check rest periods
+    const tempSchedule = JSON.parse(JSON.stringify(schedule));
+    tempSchedule[sourceWorker][sourceDay] = { ...destAssignment };
+    tempSchedule[destWorker][destDay] = { ...sourceAssignment };
+
+    // Check rest periods for both workers
+    const sourceWorkerValid = checkRestPeriod(sourceWorker, sourceDay, destAssignment.time, tempSchedule);
+    const destWorkerValid = checkRestPeriod(destWorker, destDay, sourceAssignment.time, tempSchedule);
+
+    if (!sourceWorkerValid || !destWorkerValid) {
+      alert(
+        `Cannot swap shifts: ${
+          !sourceWorkerValid ? `${sourceWorker} on ${sourceDay}` : ''
+        }${
+          !sourceWorkerValid && !destWorkerValid ? ' and ' : ''
+        }${
+          !destWorkerValid ? `${destWorker} on ${destDay}` : ''
+        } would violate the 12-hour rest period rule.`
+      );
+      return;
+    }
+
+    // Proceed with the swap if rest period checks pass
     setSchedule((prevSchedule) => {
-      // Deep copy to ensure immutability
       const updatedSchedule = JSON.parse(JSON.stringify(prevSchedule));
-      const sourceAssignment = { ...updatedSchedule[sourceWorker][sourceDay] };
-      const destAssignment = { ...updatedSchedule[destWorker][destDay] };
-
-      console.log('Before swap:', { sourceAssignment, destAssignment });
-
-      // Swap assignments
       updatedSchedule[sourceWorker][sourceDay] = { ...destAssignment };
       updatedSchedule[destWorker][destDay] = { ...sourceAssignment };
 
       console.log('After swap:', updatedSchedule);
 
       // Log audit changes
-      setAuditLogBuffer((prevLog) => {
-        const newLog = [
-          ...prevLog,
-          {
-            worker_name: sourceWorker,
-            day_of_week: sourceDay,
-            field: 'location',
-            old_value: sourceAssignment.location,
-            new_value: destAssignment.location,
-          },
-          {
-            worker_name: sourceWorker,
-            day_of_week: sourceDay,
-            field: 'time',
-            old_value: sourceAssignment.time,
-            new_value: destAssignment.time,
-          },
-          {
-            worker_name: destWorker,
-            day_of_week: destDay,
-            field: 'location',
-            old_value: destAssignment.location,
-            new_value: sourceAssignment.location,
-          },
-          {
-            worker_name: destWorker,
-            day_of_week: destDay,
-            field: 'time',
-            old_value: destAssignment.time,
-            new_value: sourceAssignment.time,
-          },
-        ];
-        console.log('Audit log buffer:', newLog);
-        return newLog;
-      });
+      setAuditLogBuffer((prevLog) => [
+        ...prevLog,
+        {
+          worker_name: sourceWorker,
+          day_of_week: sourceDay,
+          field: 'location',
+          old_value: sourceAssignment.location,
+          new_value: destAssignment.location,
+        },
+        {
+          worker_name: sourceWorker,
+          day_of_week: sourceDay,
+          field: 'time',
+          old_value: sourceAssignment.time,
+          new_value: destAssignment.time,
+        },
+        {
+          worker_name: destWorker,
+          day_of_week: destDay,
+          field: 'location',
+          old_value: destAssignment.location,
+          new_value: sourceAssignment.location,
+        },
+        {
+          worker_name: destWorker,
+          day_of_week: destDay,
+          field: 'time',
+          old_value: destAssignment.time,
+          new_value: sourceAssignment.time,
+        },
+      ]);
 
       return updatedSchedule;
     });
 
-    // Log state after setSchedule
-    setTimeout(() => {
-      console.log('State after setSchedule:', schedule);
-    }, 0);
-
-    console.log('Calling handleSave...');
-    //await handleSave();
-    console.log('Save completed');
+    // Trigger auto-save
+    setNeedsSave(true);
+    console.log('Save triggered');
   } catch (error) {
     console.error('Drag end error:', error);
     alert('Failed to save changes: ' + error.message);
-  } finally {
   }
 };
 
