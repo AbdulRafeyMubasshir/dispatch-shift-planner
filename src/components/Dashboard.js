@@ -104,43 +104,62 @@ const SortableItem = ({ id, worker, day, daySchedule, stationColor, handleChange
         className={daySchedule.location === 'Unassigned' ? 'unassigned' : 'scheduled'}
         onContextMenu={handleContextMenu}
       >
-        <div>
-          <input
-            type="text"
-            value={daySchedule.location !== 'Unassigned' ? daySchedule.location : ''}
-            onFocus={() =>
-              !isScheduleLocked &&
-              setFocusedFieldValue({
-                worker,
-                day,
-                field: 'location',
-                value: daySchedule.location,
-              })
-            }
-            onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'location', e.target.value)}
-            placeholder="Location"
-            disabled={isScheduleLocked}
-          />
-          <input
-            type="text"
-            value={daySchedule.time}
-            onFocus={() =>
-              !isScheduleLocked &&
-              setFocusedFieldValue({
-                worker,
-                day,
-                field: 'time',
-                value: daySchedule.time,
-              })
-            }
-            onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'time', e.target.value)}
-            placeholder="Time"
-            disabled={isScheduleLocked}
-          />
-          <span className="shift-duration">
-            {daySchedule.time && shiftDuration !== '0.00' ? `${shiftDuration}` : '—'}
-          </span>
-        </div>
+        <div className="schedule-cell-content">
+  <input
+    type="text"
+    value={daySchedule.location !== 'Unassigned' ? daySchedule.location : ''}
+    onFocus={() =>
+      !isScheduleLocked &&
+      setFocusedFieldValue({
+        worker,
+        day,
+        field: 'location',
+        value: daySchedule.location,
+      })
+    }
+    onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'location', e.target.value)}
+    placeholder="Location"
+    disabled={isScheduleLocked}
+    className="location-input"
+  />
+  <input
+    type="text"
+    value={daySchedule.time}
+    onFocus={() =>
+      !isScheduleLocked &&
+      setFocusedFieldValue({
+        worker,
+        day,
+        field: 'time',
+        value: daySchedule.time,
+      })
+    }
+    onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'time', e.target.value)}
+    placeholder="Time"
+    disabled={isScheduleLocked}
+    className="time-input"
+  />
+  <input
+    type="text"
+    value={daySchedule.notes || ''}
+    onFocus={() =>
+      !isScheduleLocked &&
+      setFocusedFieldValue({
+        worker,
+        day,
+        field: 'notes',
+        value: daySchedule.notes || '',
+      })
+    }
+    onChange={(e) => !isScheduleLocked && handleChange(worker, day, 'notes', e.target.value)}
+    placeholder="Notes"
+    disabled={isScheduleLocked}
+    className="notes-input"
+  />
+  <span className="shift-duration">
+    {daySchedule.time && shiftDuration !== '0.00' ? `${shiftDuration}` : '—'}
+  </span>
+</div>
       </td>
       {contextMenuPortal}
     </>
@@ -420,6 +439,7 @@ const sortedWorkers = [
           time: station.time,
           date: station.date,
           role: station.role || workerAvailability[worker].role,
+          notes: '', // Add default empty notes
         };
       }
     }
@@ -453,6 +473,7 @@ const sortedWorkers = [
         time: timeValue,
         date: newDatesOfWeek[day] || '',
         role: workerAvailability[workerName].role,
+        notes: '', // Add default empty notes
       };
     });
   });
@@ -877,10 +898,19 @@ for (let r = 3; r <= 5; r++) {
     });
     hoursRow.push(calculateHoursWorked(schedule[worker]));
     worksheet.addRow(hoursRow);
+    // After Hours row
+const notesRow = ['Notes'];
+daysOfWeek.forEach((day) => {
+  const note = schedule[worker][day]?.notes || '';
+  notesRow.push(note);
+});
+notesRow.push('');
+worksheet.addRow(notesRow);
     // Set custom row heights for worker block
 worksheet.getRow(startRow).height = 70;       // Time row
 worksheet.getRow(startRow + 1).height = 50;   // Location row
 worksheet.getRow(startRow + 2).height = 30;   // Hours row
+worksheet.getRow(startRow + 3).height = 40;   // Notes (new)
 
 
     // Merge worker name cells
@@ -898,7 +928,7 @@ worksheet.getRow(startRow + 2).height = 30;   // Hours row
       right: { style: 'thin', color: { argb: 'FF212121' } },
     };
 
-    for (let r = startRow; r <= startRow + 2; r++) {
+    for (let r = startRow; r <= startRow + 3; r++) {
       const row = worksheet.getRow(r);
       row.eachCell((cell, colNum) => {
         cell.border = {
@@ -1698,6 +1728,7 @@ setUnassignedStations(unassigned);
           location: entry.location || 'Unassigned',
           time: entry.time || '',
           date: entry.date || null,
+          notes: entry.notes || '',
           week_ending: weekEndingDate,
           is_locked: isScheduleLocked || false, // Use the current lock state from component
         };
@@ -1780,6 +1811,7 @@ setUnassignedStations(unassigned);
         time,
         date,
         worker_role,
+        notes: row.notes || '',
       };
       console.log('here');
       console.log(schedule);
